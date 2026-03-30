@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -143,6 +144,8 @@ func (a *App) handleCheckin(w http.ResponseWriter, r *http.Request) {
 		a.renderError(w, err)
 		return
 	}
+
+	log.Printf("用户%d签到成功", result.UserID)
 
 	a.renderPage(w, http.StatusOK, PageData{
 		LoggedIn:       true,

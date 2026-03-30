@@ -17,6 +17,8 @@ import (
 )
 
 func Run() {
+	configureLogging(os.Stderr)
+
 	cfg, err := config.Load()
 	if err != nil {
 		log.Fatalf("加载配置失败: %v", err)
