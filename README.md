@@ -18,30 +18,13 @@ HTML 模板会在编译时嵌入最终可执行文件，运行时不依赖外部
 - `QUOTA_THRESHOLD`：额度阈值，默认 `10000000`。
 - `QUOTA_INCREMENT`：签到成功后增加的额度，默认 `10000000`。
 
-## 运行
-
-```powershell
-go mod tidy
-go test ./...
-go run .
-```
-
-启动后访问 `http://127.0.0.1:8080`。
-
-现在可以直接在项目根目录执行：
+## 编译
 
 ```powershell
 go build
 ```
 
-如果你不希望自动联网或构建，可以只先执行：
-
-```powershell
-go mod tidy
-go test ./...
-```
-
-确认通过后再手动运行服务。
+启动后访问 `http://127.0.0.1:8080`。
 
 ## 数据库约定
 
