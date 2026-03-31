@@ -67,7 +67,7 @@
       state.info = {
         logged_in: false,
         quota_threshold: 0,
-        error: error instanceof Error ? error.message : "加载状态失败，请稍后重试。"
+        error: error instanceof Error ? error.message : "加载状态失败，请稍后重试"
       };
       state.app = "error";
     } finally {
@@ -115,21 +115,21 @@
           payload = "";
           signature = "";
         } else {
-        payload = taskPayload.payload || "";
-        signature = taskPayload.signature || "";
-        counter = "";
-        hash = "";
-        if (!payload || !signature) {
-          throw new Error("PoW 任务内容不完整，请稍后重试。");
-        }
+          payload = taskPayload.payload || "";
+          signature = taskPayload.signature || "";
+          counter = "";
+          hash = "";
+          if (!payload || !signature) {
+            throw new Error("PoW 任务内容不完整，请稍后重试");
+          }
 
-        state.app = "submitting_pow";
-        const solved = await solvePoW(payload, taskPayload.difficulty || pow.difficulty || 0, taskPayload.expires_at || 0, function (message) {
-          state.powStatus = message;
-          render();
-        });
-        counter = String(solved.counter);
-        hash = solved.hash;
+          state.app = "submitting_pow";
+          const solved = await solvePoW(payload, taskPayload.difficulty || pow.difficulty || 0, taskPayload.expires_at || 0, function (message) {
+            state.powStatus = message;
+            render();
+          });
+          counter = String(solved.counter);
+          hash = solved.hash;
         }
       }
 
@@ -152,7 +152,7 @@
       state.app = deriveAppState(payloadState);
       state.powStatus = "";
     } catch (error) {
-      state.info = mergeInfoWithError(state.info, error instanceof Error ? error.message : "签到失败，请稍后重试。");
+      state.info = mergeInfoWithError(state.info, error instanceof Error ? error.message : "签到失败，请稍后重试");
       state.app = deriveAppState(state.info);
     } finally {
       state.busy = false;
@@ -176,7 +176,7 @@
       state.app = deriveAppState(state.info);
       state.powStatus = "";
     } catch (error) {
-      state.info = mergeInfoWithError(state.info, error instanceof Error ? error.message : "退出登录失败，请稍后重试。");
+      state.info = mergeInfoWithError(state.info, error instanceof Error ? error.message : "退出登录失败，请稍后重试");
       state.app = deriveAppState(state.info);
     } finally {
       state.busy = false;
@@ -227,7 +227,7 @@
     toggle(elements.powStatus, Boolean(state.powStatus) && info.logged_in && info.can_checkin);
     setText(elements.powStatus, state.powStatus);
     toggle(elements.powHint, Boolean(pow.enabled) && info.logged_in && info.can_checkin);
-    setText(elements.powHint, pow.enabled ? "本次签到需由浏览器完成 PoW 验证，当前难度为 " + (pow.difficulty || 0) + " bit。" : "");
+    setText(elements.powHint, pow.enabled ? "本次签到需由浏览器完成 PoW 验证，当前难度为 " + (pow.difficulty || 0) + " bit" : "");
 
     toggle(elements.lastCheckin, Boolean(info.last_checkin));
     setLastCheckin(elements.lastCheckin, info.last_checkin);
@@ -285,11 +285,9 @@
     element.innerHTML =
       '最近签到结果：用户 <code>' + escapeHTML(String(lastCheckin.user_id)) +
       '</code> 于 <code>' + escapeHTML(String(lastCheckin.checkin_date)) +
-      '</code> 完成签到，本次增加额度 <code>' + escapeHTML(formatQuotaYuan(lastCheckin.quota_awarded || 0)) +
-      '</code>（原始值：' + escapeHTML(String(lastCheckin.quota_awarded || 0)) +
-      '），额度从 <code>' + escapeHTML(formatQuotaYuan(lastCheckin.quota_before || 0)) +
+      '</code> 完成签到，本次增加额度 <code>' + escapeHTML(formatQuotaYuan(lastCheckin.quota_awarded || 0)) + '</code>，额度从 <code>' + escapeHTML(formatQuotaYuan(lastCheckin.quota_before || 0)) +
       '</code> 变为 <code>' + escapeHTML(formatQuotaYuan(lastCheckin.quota_after || 0)) +
-      '</code>。';
+      '</code>';
   }
 
   function escapeHTML(value) {
@@ -321,7 +319,7 @@ async function solvePoW(payload, difficulty, expiresAt, reportStatus) {
 
   while (true) {
     if (Date.now() >= expiresAt * 1000) {
-      throw new Error("PoW 挑战已过期，请刷新页面后重试。");
+      throw new Error("PoW 挑战已过期，请刷新页面后重试");
     }
 
     const batchEnd = counter + batchSize;

@@ -119,7 +119,7 @@ func (a *App) handleInfo(w http.ResponseWriter, r *http.Request) {
 	session, err := a.auth.ReadSession(r)
 	if err != nil {
 		state := a.anonymousState()
-		state.Message = "请先使用 Linux Do 登录。"
+		state.Message = "请先使用 Linux Do 登录"
 		state.Message, state.Error = mergeFlash(state.Message, "", flash)
 		writeJSON(w, http.StatusOK, state)
 		return
@@ -153,7 +153,7 @@ func (a *App) handleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	a.setFlash(w, flashState{Message: "登录成功。"})
+	a.setFlash(w, flashState{Message: "登录成功"})
 	http.Redirect(w, r, "/", http.StatusFound)
 }
 
@@ -161,7 +161,7 @@ func (a *App) handleCheckin(w http.ResponseWriter, r *http.Request) {
 	session, err := a.auth.ReadSession(r)
 	if err != nil {
 		state := a.anonymousState()
-		state.Error = "请先登录后再签到。"
+		state.Error = "请先登录后再签到"
 		writeJSON(w, http.StatusUnauthorized, state)
 		return
 	}
@@ -206,7 +206,7 @@ func (a *App) handleCheckin(w http.ResponseWriter, r *http.Request) {
 		Quota:          result.QuotaAfter,
 		QuotaThreshold: a.config.QuotaThreshold,
 		CanCheckin:     false,
-		Message:        fmt.Sprintf("签到成功，额度已增加 %s。", formatQuotaYuan(result.QuotaAwarded)),
+		Message:        fmt.Sprintf("签到成功，额度已增加 %s", formatQuotaYuan(result.QuotaAwarded)),
 		LastCheckin:    &result,
 	}
 	writeJSON(w, http.StatusOK, state)
@@ -216,7 +216,7 @@ func (a *App) handleCheckinTask(w http.ResponseWriter, r *http.Request) {
 	session, err := a.auth.ReadSession(r)
 	if err != nil {
 		state := a.anonymousState()
-		state.Error = "请先登录后再签到。"
+		state.Error = "请先登录后再签到"
 		writeJSON(w, http.StatusUnauthorized, state)
 		return
 	}
@@ -259,7 +259,7 @@ func (a *App) handleLogout(w http.ResponseWriter, r *http.Request) {
 	a.auth.ClearSession(w)
 
 	state := a.anonymousState()
-	state.Message = "已退出登录。"
+	state.Message = "已退出登录"
 	writeJSON(w, http.StatusOK, state)
 }
 
@@ -297,7 +297,7 @@ func (a *App) loadAppState(ctx context.Context, session auth.SessionClaims, last
 		LastCheckin:    lastCheckin,
 	}
 	if state.CanCheckin {
-		state.Message = "当前余额低于阈值，可以签到。"
+		state.Message = "当前余额低于阈值，可以签到"
 		if a.config.CheckinPoWEnabled {
 			state.PoW = &PoWClientState{
 				Enabled:    true,
@@ -307,7 +307,7 @@ func (a *App) loadAppState(ctx context.Context, session auth.SessionClaims, last
 		return state, nil
 	}
 
-	state.Message = fmt.Sprintf("余额大于等于 %s，暂无法签到。", formatQuotaYuan(a.config.QuotaThreshold))
+	state.Message = fmt.Sprintf("余额大于等于 %s，暂无法签到", formatQuotaYuan(a.config.QuotaThreshold))
 	return state, nil
 }
 
