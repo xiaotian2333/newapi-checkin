@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <link rel="icon" href="https://s3plus.meituan.net/opapisdk/op_ticket_1_5677168484_1770728969386_qdqqd_ron9go.webp">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>小天公益站-签到系统</title>
+  <link rel="stylesheet" href="/assets/index.css">
+  <script src="/assets/checkin-pow.js" defer></script>
+</head>
+<body>
+  <main class="card">
+    <section class="hero">
+      <h1>小天公益站-签到系统</h1>
+    </section>
+
+    <section class="content">
+      <div class="notice hidden" data-role="notice"></div>
+      <div class="error hidden" data-role="error"></div>
+
+      <div class="loading" data-role="loading">正在加载当前状态...</div>
+
+      <section class="grid hidden" data-role="user-panel">
+        <article class="stat">
+          <div class="label">登录用户</div>
+          <div class="value" data-role="username">-</div>
+        </article>
+        <article class="stat">
+          <div class="label">Linux Do ID</div>
+          <div class="value" data-role="linux-do-id">-</div>
+        </article>
+        <article class="stat">
+          <div class="label">当前额度</div>
+          <div class="value" data-role="quota">-</div>
+        </article>
+        <article class="stat">
+          <div class="label">签到阈值</div>
+          <div class="value" data-role="quota-threshold">-</div>
+        </article>
+      </section>
+
+      <div class="actions">
+        <a class="button primary hidden" data-role="login-button" href="/login">使用 Linux Do 登录</a>
+
+        <div class="checkin-panel hidden" data-role="checkin-panel">
+          <button class="primary" type="button" data-role="checkin-button">立即签到</button>
+          <button class="disabled hidden" type="button" data-role="checkin-disabled" disabled>当前不可签到</button>
+          <p class="pow-status hidden" data-role="pow-status"></p>
+          <p class="pow-hint hidden" data-role="pow-hint"></p>
+        </div>
+
+        <button class="secondary hidden" type="button" data-role="logout-button">退出登录</button>
+      </div>
+
+      <div class="detail hidden" data-role="last-checkin"></div>
+    </section>
+  </main>
+</body>
+</html>
