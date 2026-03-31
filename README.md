@@ -33,7 +33,8 @@ go build
 
 - `GET /`：返回内嵌的单页面入口。
 - `GET /assets/*`：返回内嵌静态资源。
-- `GET /api/info`：返回当前登录态、用户信息、签到资格、PoW 挑战和页面提示。
+- `GET /api/info`：返回当前登录态、用户信息、签到资格、PoW 难度和页面提示。
+- `POST /api/checkin/task`：点击签到后即时下发 PoW 任务。
 - `POST /api/checkin`：提交 PoW 解并执行签到。
 - `POST /api/logout`：清理当前登录态。
 - `GET /login`：跳转到 Linux Do OAuth2 授权页。
@@ -72,7 +73,7 @@ go build
 
 1. 登录成功后，使用 Linux Do 用户信息中的不可变 `id` 匹配 `users.linux_do_id`。
 2. 若匹配不到用户或匹配到多条用户，直接报错。
-3. 当 `CHECKIN_POW_ENABLED=true` 且用户可签到时，浏览器必须先完成一次 PoW 计算，难度由 `CHECKIN_POW_DIFFICULTY` 控制。
+3. 当 `CHECKIN_POW_ENABLED=true` 且用户可签到时，页面会提前展示 PoW 难度，但只会在用户点击签到后才获取带时效的 PoW 任务并开始计时。
 4. 当前前端不会跳转到独立内部页面，而是通过 `/api/info` 和前端状态变量切换页面展示。
 5. 当 `quota >= QUOTA_THRESHOLD` 时，不允许签到。
 6. 当日未签到且 `quota < QUOTA_THRESHOLD` 时，写入 `checkins`，并将 `users.quota` 增加 `QUOTA_INCREMENT`。

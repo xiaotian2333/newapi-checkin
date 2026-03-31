@@ -101,6 +101,7 @@ func (a *App) Routes() http.Handler {
 	mux.HandleFunc("GET /api/info", a.handleInfo)
 	mux.HandleFunc("GET /login", a.handleLogin)
 	mux.HandleFunc("GET /auth/callback", a.handleCallback)
+	mux.HandleFunc("POST /api/checkin/task", a.handleCheckinTask)
 	mux.HandleFunc("POST /api/checkin", a.handleCheckin)
 	mux.HandleFunc("POST /api/logout", a.handleLogout)
 	return a.recoverMiddleware(mux)
@@ -211,6 +212,49 @@ func (a *App) handleCheckin(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, state)
 }
 
+func (a *App) handleCheckinTask(w http.ResponseWriter, r *http.Request) {
+	session, err := a.auth.ReadSession(r)
+	if err != nil {
+		state := a.anonymousState()
+		state.Error = "请先登录后再签到。"
+		writeJSON(w, http.StatusUnauthorized, state)
+		return
+	}
+
+	state, err := a.loadAppState(r.Context(), session, nil)
+	if err != nil {
+		a.writeStateError(w, r.Context(), session, err, nil)
+		return
+	}
+	if !state.CanCheckin {
+		state.Error = store.ErrQuotaNotEligible.Error()
+		state.Message = ""
+		state.PoW = nil
+		writeJSON(w, http.StatusBadRequest, state)
+		return
+	}
+	if !a.config.CheckinPoWEnabled {
+		writeJSON(w, http.StatusOK, PoWClientState{})
+		return
+	}
+
+	challenge, err := a.issuePoWChallenge(session.LinuxDoID, time.Now())
+	if err != nil {
+		state.Error = err.Error()
+		state.Message = ""
+		writeJSON(w, http.StatusInternalServerError, state)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, PoWClientState{
+		Enabled:    true,
+		Payload:    challenge.Payload,
+		Signature:  challenge.Signature,
+		Difficulty: challenge.Difficulty,
+		ExpiresAt:  challenge.ExpiresAt,
+	})
+}
+
 func (a *App) handleLogout(w http.ResponseWriter, r *http.Request) {
 	a.auth.ClearSession(w)
 
@@ -255,16 +299,9 @@ func (a *App) loadAppState(ctx context.Context, session auth.SessionClaims, last
 	if state.CanCheckin {
 		state.Message = "当前余额低于阈值，可以签到。"
 		if a.config.CheckinPoWEnabled {
-			challenge, err := a.issuePoWChallenge(session.LinuxDoID, time.Now())
-			if err != nil {
-				return AppState{}, err
-			}
 			state.PoW = &PoWClientState{
 				Enabled:    true,
-				Payload:    challenge.Payload,
-				Signature:  challenge.Signature,
-				Difficulty: challenge.Difficulty,
-				ExpiresAt:  challenge.ExpiresAt,
+				Difficulty: a.config.CheckinPoWDifficulty,
 			}
 		}
 		return state, nil

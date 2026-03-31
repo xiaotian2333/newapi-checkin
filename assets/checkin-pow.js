@@ -82,7 +82,7 @@
     }
 
     state.busy = true;
-    state.app = "submitting_pow";
+    state.app = "fetching_pow_task";
     state.powStatus = "";
     render();
 
@@ -94,20 +94,43 @@
       let hash = "";
 
       if (pow.enabled) {
-        payload = pow.payload || "";
-        signature = pow.signature || "";
+        state.powStatus = "正在获取 PoW 任务...";
+        render();
+
+        const taskResponse = await fetch("/api/checkin/task", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: {
+            "Accept": "application/json"
+          }
+        });
+        const taskPayload = await taskResponse.json();
+        if (!taskResponse.ok) {
+          state.info = taskPayload;
+          state.powStatus = "";
+          state.app = deriveAppState(taskPayload);
+          return;
+        }
+        if (!taskPayload.enabled) {
+          payload = "";
+          signature = "";
+        } else {
+        payload = taskPayload.payload || "";
+        signature = taskPayload.signature || "";
         counter = "";
         hash = "";
         if (!payload || !signature) {
-          throw new Error("PoW 参数不完整，请刷新页面后重试。");
+          throw new Error("PoW 任务内容不完整，请稍后重试。");
         }
 
-        const solved = await solvePoW(payload, pow.difficulty || 0, pow.expires_at || 0, function (message) {
+        state.app = "submitting_pow";
+        const solved = await solvePoW(payload, taskPayload.difficulty || pow.difficulty || 0, taskPayload.expires_at || 0, function (message) {
           state.powStatus = message;
           render();
         });
         counter = String(solved.counter);
         hash = solved.hash;
+        }
       }
 
       const response = await fetch("/api/checkin", {
@@ -193,7 +216,11 @@
     toggle(elements.checkinDisabled, Boolean(info.logged_in && !info.can_checkin));
     if (elements.checkinButton) {
       elements.checkinButton.disabled = state.busy;
-      elements.checkinButton.textContent = state.busy && state.app === "submitting_pow" ? "浏览器验证中..." : "立即签到";
+      elements.checkinButton.textContent = state.busy && state.app === "fetching_pow_task"
+        ? "获取任务中..."
+        : state.busy && state.app === "submitting_pow"
+          ? "浏览器验证中..."
+          : "立即签到";
     }
 
     const pow = info.pow || {};
