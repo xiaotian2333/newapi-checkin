@@ -9,47 +9,57 @@
   <script src="/assets/checkin-pow.js" defer></script>
 </head>
 <body>
+  <div class="warm-glow"></div>
   <main class="card">
     <section class="hero">
-      <h1>小天公益站-签到系统</h1>
+      <h1>小天公益站</h1>
+      <p class="subtitle">每日签到</p>
     </section>
 
     <section class="content">
       <div class="notice hidden" data-role="notice"></div>
       <div class="error hidden" data-role="error"></div>
 
-      <div class="loading" data-role="loading">正在加载当前状态...</div>
+      <div class="loading" data-role="loading">
+        <span class="loading-spinner"></span>
+        正在加载当前状态...
+      </div>
 
       <section class="grid hidden" data-role="user-panel">
         <article class="stat">
-          <div class="label">登录用户</div>
-          <div class="value" data-role="username">-</div>
+          <div class="stat-icon">👋</div>
+          <div class="stat-info">
+            <div class="label">登录用户</div>
+            <div class="value" data-role="username">-</div>
+          </div>
         </article>
         <article class="stat">
-          <div class="label">Linux Do ID</div>
-          <div class="value" data-role="linux-do-id">-</div>
+          <div class="stat-icon">✨</div>
+          <div class="stat-info">
+            <div class="label">当前额度</div>
+            <div class="value" data-role="quota">-</div>
+          </div>
         </article>
         <article class="stat">
-          <div class="label">当前额度</div>
-          <div class="value" data-role="quota">-</div>
-        </article>
-        <article class="stat">
-          <div class="label">签到阈值</div>
-          <div class="value" data-role="quota-threshold">-</div>
+          <div class="stat-icon">🎯</div>
+          <div class="stat-info">
+            <div class="label">签到阈值</div>
+            <div class="value" data-role="quota-threshold">-</div>
+          </div>
         </article>
       </section>
 
       <div class="actions">
-        <a class="button primary hidden" data-role="login-button" href="/login">使用 Linux Do 登录</a>
+        <a class="button primary hidden" data-role="login-button" href="/login">🌿 使用 Linux Do 登录</a>
 
         <div class="checkin-panel hidden" data-role="checkin-panel">
-          <button class="primary" type="button" data-role="checkin-button">立即签到</button>
-          <button class="disabled hidden" type="button" data-role="checkin-disabled" disabled>当前不可签到</button>
+          <button class="button primary checkin-btn" type="button" data-role="checkin-button">马上签到 ☀️</button>
+          <button class="button disabled hidden" type="button" data-role="checkin-disabled" disabled>明天再来签到吧</button>
           <p class="pow-status hidden" data-role="pow-status"></p>
           <p class="pow-hint hidden" data-role="pow-hint"></p>
         </div>
 
-        <button class="secondary hidden" type="button" data-role="logout-button">退出登录</button>
+        <button class="button secondary hidden" type="button" data-role="logout-button">退出登录</button>
       </div>
 
       <div class="detail hidden" data-role="last-checkin"></div>
