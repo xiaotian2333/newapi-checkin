@@ -47,6 +47,26 @@ go build
   - `checkin_date varchar(10)`
   - `quota_awarded bigint`
   - `created_at bigint`
+- `logs` 表至少包含以下字段：
+  - `user_id bigint`
+  - `created_at bigint`
+  - `type bigint`
+  - `content text`
+  - `username text`
+  - `token_name text`
+  - `model_name text`
+  - `quota bigint`
+  - `prompt_tokens bigint`
+  - `completion_tokens bigint`
+  - `use_time bigint`
+  - `is_stream boolean`
+  - `channel_id bigint`
+  - `channel_name text`
+  - `token_id bigint`
+  - `group text`
+  - `ip text`
+  - `other text`
+  - `request_id varchar(64)`
 
 ## 业务规则
 
@@ -56,3 +76,4 @@ go build
 4. 当前前端不会跳转到独立内部页面，而是通过 `/api/info` 和前端状态变量切换页面展示。
 5. 当 `quota >= QUOTA_THRESHOLD` 时，不允许签到。
 6. 当日未签到且 `quota < QUOTA_THRESHOLD` 时，写入 `checkins`，并将 `users.quota` 增加 `QUOTA_INCREMENT`。
+7. 签到成功后，会额外向 `logs` 表写入一条 `type = 4` 的日志，内容格式为 `用户签到，获得额度 ¥20.000000 额度`。

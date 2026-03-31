@@ -186,6 +186,7 @@ func (a *App) handleCheckin(w http.ResponseWriter, r *http.Request) {
 	result, err := a.store.Checkin(
 		r.Context(),
 		session.LinuxDoID,
+		session.Username,
 		a.config.QuotaThreshold,
 		a.config.QuotaIncrement,
 		time.Now(),

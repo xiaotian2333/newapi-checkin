@@ -10,11 +10,13 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
+const quotaYuanRate = int64(500000)
+
 var (
-	ErrUserNotFound       = errors.New("用户不存在")
-	ErrDuplicateUsers     = errors.New("匹配到多条用户记录")
-	ErrAlreadyCheckedIn   = errors.New("今日已签到")
-	ErrQuotaNotEligible   = errors.New("当前余额已达到签到阈值")
+	ErrUserNotFound     = errors.New("用户不存在")
+	ErrDuplicateUsers   = errors.New("匹配到多条用户记录")
+	ErrAlreadyCheckedIn = errors.New("今日已签到")
+	ErrQuotaNotEligible = errors.New("当前余额已达到签到阈值")
 )
 
 type Store struct {
@@ -33,17 +35,23 @@ type HomeData struct {
 }
 
 type CheckinResult struct {
-	UserID       int64
-	CheckinDate  string
-	QuotaAwarded int64
-	QuotaBefore  int64
-	QuotaAfter   int64
+	UserID       int64  `json:"user_id"`
+	CheckinDate  string `json:"checkin_date"`
+	QuotaAwarded int64  `json:"quota_awarded"`
+	QuotaBefore  int64  `json:"quota_before"`
+	QuotaAfter   int64  `json:"quota_after"`
 }
 
 func (s *Store) ValidateSchema(ctx context.Context) error {
 	required := map[string][]string{
 		"users":    {"id", "linux_do_id", "quota"},
 		"checkins": {"user_id", "checkin_date", "quota_awarded", "created_at"},
+		"logs": {
+			"user_id", "created_at", "type", "content", "username",
+			"token_name", "model_name", "quota", "prompt_tokens", "completion_tokens",
+			"use_time", "is_stream", "channel_id", "channel_name", "token_id",
+			"group", "ip", "other", "request_id",
+		},
 	}
 
 	for table, columns := range required {
@@ -141,7 +149,7 @@ func (s *Store) GetUserByLinuxDoID(ctx context.Context, linuxDoID string) (User,
 	return users[0], nil
 }
 
-func (s *Store) Checkin(ctx context.Context, linuxDoID string, threshold, increment int64, now time.Time) (CheckinResult, error) {
+func (s *Store) Checkin(ctx context.Context, linuxDoID, username string, threshold, increment int64, now time.Time) (CheckinResult, error) {
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
 		return CheckinResult{}, fmt.Errorf("开启事务失败: %w", err)
@@ -215,6 +223,10 @@ func (s *Store) Checkin(ctx context.Context, linuxDoID string, threshold, increm
 		return CheckinResult{}, fmt.Errorf("更新用户额度失败: %w", err)
 	}
 
+	if err := insertCheckinLog(ctx, tx, userID, username, increment, createdAt); err != nil {
+		return CheckinResult{}, err
+	}
+
 	if err := tx.Commit(); err != nil {
 		return CheckinResult{}, fmt.Errorf("提交事务失败: %w", err)
 	}
@@ -226,4 +238,47 @@ func (s *Store) Checkin(ctx context.Context, linuxDoID string, threshold, increm
 		QuotaBefore:  quota,
 		QuotaAfter:   quota + increment,
 	}, nil
+}
+
+func insertCheckinLog(ctx context.Context, tx *sql.Tx, userID int64, username string, increment, createdAt int64) error {
+	content := buildCheckinLogContent(increment)
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO logs (
+			user_id, created_at, type, content, username,
+			token_name, model_name, quota, prompt_tokens, completion_tokens,
+			use_time, is_stream, channel_id, channel_name, token_id,
+			"group", ip, other, request_id
+		)
+		VALUES (
+			$1, $2, $3, $4, $5,
+			$6, $7, $8, $9, $10,
+			$11, $12, $13, $14, $15,
+			$16, $17, $18, $19
+		)
+	`,
+		userID, createdAt, 4, content, username,
+		"", "", int64(0), int64(0), int64(0),
+		int64(0), false, int64(0), "", int64(0),
+		"", "", "", "",
+	); err != nil {
+		return fmt.Errorf("写入签到日志失败: %w", err)
+	}
+	return nil
+}
+
+func buildCheckinLogContent(increment int64) string {
+	return fmt.Sprintf("用户签到，获得额度 %s 额度", formatQuotaYuanFixed(increment))
+}
+
+func formatQuotaYuanFixed(value int64) string {
+	sign := ""
+	if value < 0 {
+		sign = "-"
+		value = -value
+	}
+
+	yuan := value / quotaYuanRate
+	fraction := value % quotaYuanRate
+	decimal := fraction * 1000000 / quotaYuanRate
+	return fmt.Sprintf("%s¥%d.%06d", sign, yuan, decimal)
 }
