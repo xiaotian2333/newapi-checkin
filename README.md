@@ -1,6 +1,6 @@
 # NewAPI Checkin
 
-这是一个使用 Go 编写的签到服务。用户通过 Linux Do OAuth2 登录后，服务会读取 PostgreSQL 中 `users` 表的 `linux_do_id` 与 `quota`，当额度低于阈值时开放签到；签到成功后，会向 `checkins` 表写入记录，并给 `users.quota` 增加固定额度。
+这是一个使用 Go 编写的签到服务。用户通过 Linux Do OAuth2 登录后，服务会读取 PostgreSQL 中 `users` 表的 `linux_do_id` 与 `quota`，当额度低于阈值时开放签到；签到成功后，会向 `checkins` 表写入记录，并给 `users.quota` 增加区间随机额度。
 
 程序启动时会优先读取项目根目录下的 `.env` 文件；如果某个变量已经在系统环境中显式设置，则系统环境变量优先。
 前端采用单页面模式，用户侧始终停留在 `/`，由浏览器内部状态控制页面展示。根目录 `assets` 下的 HTML、CSS、JS 资源都会在编译时嵌入最终可执行文件，运行时不依赖外部模板或静态资源目录。
@@ -16,10 +16,13 @@
 - `JWT_SECRET`：签发登录态 Cookie 的密钥。
 - `LISTEN_ADDR`：监听地址，默认 `:8080`。
 - `QUOTA_THRESHOLD`：额度阈值，默认 `10000000`。
-- `QUOTA_INCREMENT`：签到成功后增加的额度，默认 `10000000`。
+- `QUOTA_INCREMENT_MIN`：签到成功后增加额度的最小值，默认 `10000000`。
+- `QUOTA_INCREMENT_MAX`：签到成功后增加额度的最大值，默认 `10000000`。
 - `CHECKIN_POW_ENABLED`：是否启用签到前的浏览器 PoW，默认 `true`。
 - `CHECKIN_POW_DIFFICULTY`：PoW 难度，单位为前导零 bit，默认 `18`。
 - `CHECKIN_POW_TTL_SECONDS`：PoW 挑战有效期，默认 `300` 秒。
+
+签到奖励始终按 `0.01 元` 为最小单位发放。按当前额度换算规则，随机结果一定是 `5000` 的倍数；如果配置区间内不存在这样的值，服务会在启动时报错。
 
 ## 编译
 
@@ -76,5 +79,5 @@ go build
 3. 当 `CHECKIN_POW_ENABLED=true` 且用户可签到时，页面会提前展示 PoW 难度，但只会在用户点击签到后才获取带时效的 PoW 任务并开始计时。
 4. 当前前端不会跳转到独立内部页面，而是通过 `/api/info` 和前端状态变量切换页面展示。
 5. 当 `quota >= QUOTA_THRESHOLD` 时，不允许签到。
-6. 当日未签到且 `quota < QUOTA_THRESHOLD` 时，写入 `checkins`，并将 `users.quota` 增加 `QUOTA_INCREMENT`。
-7. 签到成功后，会额外向 `logs` 表写入一条 `type = 4` 的日志，内容格式为 `用户签到，获得额度 ¥20.000000 额度`。
+6. 当日未签到且 `quota < QUOTA_THRESHOLD` 时，服务会在 `QUOTA_INCREMENT_MIN` 到 `QUOTA_INCREMENT_MAX` 之间随机出本次奖励额度，并保证结果是 `5000` 的倍数，然后写入 `checkins`，并将 `users.quota` 增加该实际值。
+7. 签到成功后，接口会直接返回本次实际获得的额度，并额外向 `logs` 表写入一条 `type = 4` 的日志，内容格式为 `用户签到，获得额度 ¥20.000000 额度`。

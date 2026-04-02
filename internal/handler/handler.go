@@ -17,6 +17,7 @@ import (
 	webassets "newapi-checkin/assets"
 	"newapi-checkin/internal/auth"
 	"newapi-checkin/internal/config"
+	"newapi-checkin/internal/reward"
 	"newapi-checkin/internal/store"
 )
 
@@ -197,12 +198,18 @@ func (a *App) handleCheckin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	quotaAwarded, err := reward.RandomQuotaIncrement(a.config.QuotaIncrementMin, a.config.QuotaIncrementMax)
+	if err != nil {
+		a.writeStateError(w, r.Context(), session, err, nil)
+		return
+	}
+
 	result, err := a.store.Checkin(
 		r.Context(),
 		session.LinuxDoID,
 		session.Username,
 		a.config.QuotaThreshold,
-		a.config.QuotaIncrement,
+		quotaAwarded,
 		time.Now(),
 	)
 	if err != nil {

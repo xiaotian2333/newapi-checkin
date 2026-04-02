@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"newapi-checkin/internal/reward"
 	"os"
 	"strconv"
 	"strings"
@@ -11,20 +12,22 @@ import (
 )
 
 const (
-	defaultListenAddr     = ":8080"
-	defaultQuotaThreshold = int64(10000000)
-	defaultQuotaIncrement = int64(10000000)
-	defaultPoWEnabled     = true
-	defaultPoWDifficulty  = 18
-	defaultPoWTTLSeconds  = 300
-	maxPoWDifficulty      = 256
+	defaultListenAddr        = ":8080"
+	defaultQuotaThreshold    = int64(10000000)
+	defaultQuotaIncrementMin = int64(10000000)
+	defaultQuotaIncrementMax = int64(10000000)
+	defaultPoWEnabled        = true
+	defaultPoWDifficulty     = 18
+	defaultPoWTTLSeconds     = 300
+	maxPoWDifficulty         = 256
 )
 
 type Config struct {
 	DatabaseURL          string
 	ListenAddr           string
 	QuotaThreshold       int64
-	QuotaIncrement       int64
+	QuotaIncrementMin    int64
+	QuotaIncrementMax    int64
 	JWTSecret            []byte
 	JWTCookieName        string
 	OAuthStateCookie     string
@@ -51,7 +54,11 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	quotaIncrement, err := int64OrDefault("QUOTA_INCREMENT", defaultQuotaIncrement)
+	quotaIncrementMin, err := int64OrDefault("QUOTA_INCREMENT_MIN", defaultQuotaIncrementMin)
+	if err != nil {
+		return Config{}, err
+	}
+	quotaIncrementMax, err := int64OrDefault("QUOTA_INCREMENT_MAX", defaultQuotaIncrementMax)
 	if err != nil {
 		return Config{}, err
 	}
@@ -72,7 +79,8 @@ func Load() (Config, error) {
 		DatabaseURL:          strings.TrimSpace(os.Getenv("DATABASE_URL")),
 		ListenAddr:           valueOrDefault("LISTEN_ADDR", defaultListenAddr),
 		QuotaThreshold:       quotaThreshold,
-		QuotaIncrement:       quotaIncrement,
+		QuotaIncrementMin:    quotaIncrementMin,
+		QuotaIncrementMax:    quotaIncrementMax,
 		JWTSecret:            []byte(strings.TrimSpace(os.Getenv("JWT_SECRET"))),
 		JWTCookieName:        "linuxdo_checkin_session",
 		OAuthStateCookie:     "linuxdo_oauth_state",
@@ -101,8 +109,8 @@ func Load() (Config, error) {
 	if cfg.QuotaThreshold < 0 {
 		return Config{}, errors.New("QUOTA_THRESHOLD 不能小于 0")
 	}
-	if cfg.QuotaIncrement <= 0 {
-		return Config{}, errors.New("QUOTA_INCREMENT 必须大于 0")
+	if _, _, err := reward.NormalizeQuotaIncrementRange(cfg.QuotaIncrementMin, cfg.QuotaIncrementMax); err != nil {
+		return Config{}, err
 	}
 	if cfg.CheckinPoWDifficulty < 0 {
 		return Config{}, errors.New("CHECKIN_POW_DIFFICULTY 不能小于 0")

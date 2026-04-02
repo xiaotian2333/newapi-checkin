@@ -149,7 +149,7 @@ func (s *Store) GetUserByLinuxDoID(ctx context.Context, linuxDoID string) (User,
 	return users[0], nil
 }
 
-func (s *Store) Checkin(ctx context.Context, linuxDoID, username string, threshold, increment int64, now time.Time) (CheckinResult, error) {
+func (s *Store) Checkin(ctx context.Context, linuxDoID, username string, threshold, quotaAwarded int64, now time.Time) (CheckinResult, error) {
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
 		return CheckinResult{}, fmt.Errorf("开启事务失败: %w", err)
@@ -211,7 +211,7 @@ func (s *Store) Checkin(ctx context.Context, linuxDoID, username string, thresho
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO checkins (user_id, checkin_date, quota_awarded, created_at)
 		VALUES ($1, $2, $3, $4)
-	`, userID, checkinDate, increment, createdAt); err != nil {
+	`, userID, checkinDate, quotaAwarded, createdAt); err != nil {
 		return CheckinResult{}, fmt.Errorf("写入签到记录失败: %w", err)
 	}
 
@@ -219,11 +219,11 @@ func (s *Store) Checkin(ctx context.Context, linuxDoID, username string, thresho
 		UPDATE users
 		SET quota = quota + $1
 		WHERE id = $2
-	`, increment, userID); err != nil {
+	`, quotaAwarded, userID); err != nil {
 		return CheckinResult{}, fmt.Errorf("更新用户额度失败: %w", err)
 	}
 
-	if err := insertCheckinLog(ctx, tx, userID, username, increment, createdAt); err != nil {
+	if err := insertCheckinLog(ctx, tx, userID, username, quotaAwarded, createdAt); err != nil {
 		return CheckinResult{}, err
 	}
 
@@ -234,9 +234,9 @@ func (s *Store) Checkin(ctx context.Context, linuxDoID, username string, thresho
 	return CheckinResult{
 		UserID:       userID,
 		CheckinDate:  checkinDate,
-		QuotaAwarded: increment,
+		QuotaAwarded: quotaAwarded,
 		QuotaBefore:  quota,
-		QuotaAfter:   quota + increment,
+		QuotaAfter:   quota + quotaAwarded,
 	}, nil
 }
 
