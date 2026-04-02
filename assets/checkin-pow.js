@@ -222,6 +222,9 @@
           ? "浏览器验证中..."
           : "立即签到";
     }
+    if (elements.checkinDisabled) {
+      elements.checkinDisabled.textContent = getDisabledCheckinText(info);
+    }
 
     const pow = info.pow || {};
     toggle(elements.powStatus, Boolean(state.powStatus) && info.logged_in && info.can_checkin);
@@ -257,6 +260,16 @@
     next.error = message;
     next.message = "";
     return next;
+  }
+
+  function getDisabledCheckinText(info) {
+    if (info.last_checkin) {
+      return "明天再来签到吧";
+    }
+    if (Number(info.quota || 0) >= Number(info.quota_threshold || 0)) {
+      return "当前额度充足，无需签到";
+    }
+    return "明天再来签到吧";
   }
 
   function toggle(element, visible) {

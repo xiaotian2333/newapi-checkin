@@ -184,6 +184,19 @@ func (a *App) handleCheckin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	currentState, err := a.loadAppState(r.Context(), session, nil)
+	if err != nil {
+		a.writeStateError(w, r.Context(), session, err, nil)
+		return
+	}
+	if !currentState.CanCheckin {
+		currentState.Error = store.ErrQuotaNotEligible.Error()
+		currentState.Message = ""
+		currentState.PoW = nil
+		writeJSON(w, http.StatusBadRequest, currentState)
+		return
+	}
+
 	result, err := a.store.Checkin(
 		r.Context(),
 		session.LinuxDoID,
