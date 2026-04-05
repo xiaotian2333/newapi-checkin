@@ -86,3 +86,7 @@ go build
 6. 当 `quota >= QUOTA_THRESHOLD` 时，不允许签到。
 7. 当日未签到且 `quota < QUOTA_THRESHOLD` 时，服务会在 `QUOTA_INCREMENT_MIN` 到 `QUOTA_INCREMENT_MAX` 之间随机出本次奖励额度，并保证结果是 `5000` 的倍数，然后写入 `checkins`，并将 `users.quota` 增加该实际值。
 8. 签到成功后，接口会直接返回本次实际获得的额度，并额外向 `logs` 表写入一条 `type = 4` 的日志，内容格式为 `用户签到，获得额度 ￥20.000000 额度`。
+
+## 友情链接
+
+- [Linux Do 社区](https://linux.do/)  
