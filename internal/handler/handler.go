@@ -19,22 +19,26 @@ import (
 	"newapi-checkin/internal/config"
 	"newapi-checkin/internal/reward"
 	"newapi-checkin/internal/store"
+	"newapi-checkin/internal/turnstile"
 )
 
 const flashCookieName = "linuxdo_checkin_flash"
 
 var ErrInvalidCheckinRequest = errors.New("签到请求格式非法")
+var ErrInvalidCheckinTaskRequest = errors.New("验证码请求格式非法")
 
 type Options struct {
-	Config config.Config
-	Store  *store.Store
-	Auth   *auth.Service
+	Config    config.Config
+	Store     userStore
+	Auth      authService
+	Turnstile captchaVerifier
 }
 
 type App struct {
 	config       config.Config
-	store        *store.Store
-	auth         *auth.Service
+	store        userStore
+	auth         authService
+	turnstile    captchaVerifier
 	assetHandler http.Handler
 	indexHTML    []byte
 }
@@ -50,6 +54,7 @@ type AppState struct {
 	Error          string               `json:"error,omitempty"`
 	LastCheckin    *store.CheckinResult `json:"last_checkin,omitempty"`
 	PoW            *PoWClientState      `json:"pow,omitempty"`
+	Captcha        *CaptchaClientState  `json:"captcha,omitempty"`
 }
 
 type PoWClientState struct {
@@ -60,11 +65,20 @@ type PoWClientState struct {
 	ExpiresAt  int64  `json:"expires_at,omitempty"`
 }
 
+type CaptchaClientState struct {
+	Enabled bool   `json:"enabled"`
+	SiteKey string `json:"site_key,omitempty"`
+}
+
 type checkinRequest struct {
 	Payload   string `json:"pow_payload"`
 	Signature string `json:"pow_signature"`
 	Counter   string `json:"pow_counter"`
 	Hash      string `json:"pow_hash"`
+}
+
+type checkinTaskRequest struct {
+	CaptchaToken string `json:"captcha_token"`
 }
 
 type flashState struct {
@@ -75,6 +89,9 @@ type flashState struct {
 func New(opts Options) (*App, error) {
 	if opts.Auth == nil {
 		opts.Auth = auth.NewService(opts.Config)
+	}
+	if opts.Turnstile == nil && opts.Config.CheckinTurnstileEnabled {
+		opts.Turnstile = turnstile.NewService(opts.Config.CheckinTurnstileSecretKey)
 	}
 
 	assetHandler, err := newAssetHandler()
@@ -90,6 +107,7 @@ func New(opts Options) (*App, error) {
 		config:       opts.Config,
 		store:        opts.Store,
 		auth:         opts.Auth,
+		turnstile:    opts.Turnstile,
 		assetHandler: assetHandler,
 		indexHTML:    indexHTML,
 	}, nil
@@ -253,6 +271,10 @@ func (a *App) handleCheckinTask(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, state)
 		return
 	}
+	if err := a.verifyCaptchaForCheckinTask(r.Context(), r); err != nil {
+		a.writeStateError(w, r.Context(), session, err, nil)
+		return
+	}
 	if !a.config.CheckinPoWEnabled {
 		writeJSON(w, http.StatusOK, PoWClientState{})
 		return
@@ -324,6 +346,12 @@ func (a *App) loadAppState(ctx context.Context, session auth.SessionClaims, last
 				Difficulty: a.config.CheckinPoWDifficulty,
 			}
 		}
+		if a.config.CheckinTurnstileEnabled {
+			state.Captcha = &CaptchaClientState{
+				Enabled: true,
+				SiteKey: a.config.CheckinTurnstileSiteKey,
+			}
+		}
 		return state, nil
 	}
 
@@ -350,6 +378,7 @@ func (a *App) writeStateError(w http.ResponseWriter, ctx context.Context, sessio
 	if errors.Is(err, store.ErrAlreadyCheckedIn) || errors.Is(err, store.ErrQuotaNotEligible) {
 		state.CanCheckin = false
 		state.PoW = nil
+		state.Captcha = nil
 	}
 	writeJSON(w, status, state)
 }
@@ -391,6 +420,29 @@ func decodeCheckinRequest(r *http.Request) (checkinRequest, error) {
 		Signature: r.FormValue("pow_signature"),
 		Counter:   r.FormValue("pow_counter"),
 		Hash:      r.FormValue("pow_hash"),
+	}, nil
+}
+
+func decodeCheckinTaskRequest(r *http.Request) (checkinTaskRequest, error) {
+	contentType := strings.TrimSpace(r.Header.Get("Content-Type"))
+	if strings.HasPrefix(contentType, "application/json") {
+		body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+		if err != nil {
+			return checkinTaskRequest{}, ErrInvalidCheckinTaskRequest
+		}
+
+		var req checkinTaskRequest
+		if err := json.Unmarshal(body, &req); err != nil {
+			return checkinTaskRequest{}, ErrInvalidCheckinTaskRequest
+		}
+		return req, nil
+	}
+
+	if err := r.ParseForm(); err != nil {
+		return checkinTaskRequest{}, ErrInvalidCheckinTaskRequest
+	}
+	return checkinTaskRequest{
+		CaptchaToken: r.FormValue("captcha_token"),
 	}, nil
 }
 
@@ -467,9 +519,11 @@ func statusForError(err error) int {
 		return http.StatusNotFound
 	case errors.Is(err, store.ErrDuplicateUsers):
 		return http.StatusConflict
+	case errors.Is(err, turnstile.ErrServiceUnavailable):
+		return http.StatusBadGateway
 	case errors.Is(err, store.ErrAlreadyCheckedIn), errors.Is(err, store.ErrQuotaNotEligible), errors.Is(err, ErrInvalidPoW):
 		return http.StatusBadRequest
-	case errors.Is(err, ErrInvalidCheckinRequest):
+	case errors.Is(err, ErrInvalidCheckinRequest), errors.Is(err, ErrInvalidCheckinTaskRequest), errors.Is(err, turnstile.ErrInvalidToken):
 		return http.StatusBadRequest
 	case errors.Is(err, auth.ErrMissingSession), errors.Is(err, auth.ErrExpiredSession), errors.Is(err, auth.ErrInvalidSession):
 		return http.StatusUnauthorized

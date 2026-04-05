@@ -19,30 +19,34 @@ const (
 	defaultPoWEnabled        = true
 	defaultPoWDifficulty     = 18
 	defaultPoWTTLSeconds     = 300
+	defaultTurnstileEnabled  = false
 	maxPoWDifficulty         = 256
 )
 
 type Config struct {
-	DatabaseURL          string
-	ListenAddr           string
-	QuotaThreshold       int64
-	QuotaIncrementMin    int64
-	QuotaIncrementMax    int64
-	JWTSecret            []byte
-	JWTCookieName        string
-	OAuthStateCookie     string
-	OAuthStateTTL        time.Duration
-	SessionTTL           time.Duration
-	CookieSecure         bool
-	AuthorizeURL         string
-	TokenURL             string
-	UserInfoURL          string
-	ClientID             string
-	ClientSecret         string
-	RedirectURI          string
-	CheckinPoWEnabled    bool
-	CheckinPoWDifficulty int
-	CheckinPoWTTL        time.Duration
+	DatabaseURL               string
+	ListenAddr                string
+	QuotaThreshold            int64
+	QuotaIncrementMin         int64
+	QuotaIncrementMax         int64
+	JWTSecret                 []byte
+	JWTCookieName             string
+	OAuthStateCookie          string
+	OAuthStateTTL             time.Duration
+	SessionTTL                time.Duration
+	CookieSecure              bool
+	AuthorizeURL              string
+	TokenURL                  string
+	UserInfoURL               string
+	ClientID                  string
+	ClientSecret              string
+	RedirectURI               string
+	CheckinPoWEnabled         bool
+	CheckinPoWDifficulty      int
+	CheckinPoWTTL             time.Duration
+	CheckinTurnstileEnabled   bool
+	CheckinTurnstileSiteKey   string
+	CheckinTurnstileSecretKey string
 }
 
 func Load() (Config, error) {
@@ -74,27 +78,34 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	turnstileEnabled, err := boolOrDefault("CHECKIN_TURNSTILE_ENABLED", defaultTurnstileEnabled)
+	if err != nil {
+		return Config{}, err
+	}
 
 	cfg := Config{
-		DatabaseURL:          strings.TrimSpace(os.Getenv("DATABASE_URL")),
-		ListenAddr:           valueOrDefault("LISTEN_ADDR", defaultListenAddr),
-		QuotaThreshold:       quotaThreshold,
-		QuotaIncrementMin:    quotaIncrementMin,
-		QuotaIncrementMax:    quotaIncrementMax,
-		JWTSecret:            []byte(strings.TrimSpace(os.Getenv("JWT_SECRET"))),
-		JWTCookieName:        "linuxdo_checkin_session",
-		OAuthStateCookie:     "linuxdo_oauth_state",
-		OAuthStateTTL:        10 * time.Minute,
-		SessionTTL:           24 * time.Hour,
-		AuthorizeURL:         "https://connect.linux.do/oauth2/authorize",
-		TokenURL:             "https://connect.linux.do/oauth2/token",
-		UserInfoURL:          "https://connect.linux.do/api/user",
-		ClientID:             strings.TrimSpace(os.Getenv("LINUXDO_CLIENT_ID")),
-		ClientSecret:         strings.TrimSpace(os.Getenv("LINUXDO_CLIENT_SECRET")),
-		RedirectURI:          strings.TrimSpace(os.Getenv("LINUXDO_REDIRECT_URI")),
-		CheckinPoWEnabled:    powEnabled,
-		CheckinPoWDifficulty: powDifficulty,
-		CheckinPoWTTL:        time.Duration(powTTLSeconds) * time.Second,
+		DatabaseURL:               strings.TrimSpace(os.Getenv("DATABASE_URL")),
+		ListenAddr:                valueOrDefault("LISTEN_ADDR", defaultListenAddr),
+		QuotaThreshold:            quotaThreshold,
+		QuotaIncrementMin:         quotaIncrementMin,
+		QuotaIncrementMax:         quotaIncrementMax,
+		JWTSecret:                 []byte(strings.TrimSpace(os.Getenv("JWT_SECRET"))),
+		JWTCookieName:             "linuxdo_checkin_session",
+		OAuthStateCookie:          "linuxdo_oauth_state",
+		OAuthStateTTL:             10 * time.Minute,
+		SessionTTL:                24 * time.Hour,
+		AuthorizeURL:              "https://connect.linux.do/oauth2/authorize",
+		TokenURL:                  "https://connect.linux.do/oauth2/token",
+		UserInfoURL:               "https://connect.linux.do/api/user",
+		ClientID:                  strings.TrimSpace(os.Getenv("LINUXDO_CLIENT_ID")),
+		ClientSecret:              strings.TrimSpace(os.Getenv("LINUXDO_CLIENT_SECRET")),
+		RedirectURI:               strings.TrimSpace(os.Getenv("LINUXDO_REDIRECT_URI")),
+		CheckinPoWEnabled:         powEnabled,
+		CheckinPoWDifficulty:      powDifficulty,
+		CheckinPoWTTL:             time.Duration(powTTLSeconds) * time.Second,
+		CheckinTurnstileEnabled:   turnstileEnabled,
+		CheckinTurnstileSiteKey:   strings.TrimSpace(os.Getenv("CHECKIN_TURNSTILE_SITE_KEY")),
+		CheckinTurnstileSecretKey: strings.TrimSpace(os.Getenv("CHECKIN_TURNSTILE_SECRET_KEY")),
 	}
 
 	if cfg.DatabaseURL == "" {
@@ -120,6 +131,17 @@ func Load() (Config, error) {
 	}
 	if cfg.CheckinPoWTTL <= 0 {
 		return Config{}, errors.New("CHECKIN_POW_TTL_SECONDS 必须大于 0")
+	}
+	if cfg.CheckinTurnstileEnabled {
+		if !cfg.CheckinPoWEnabled {
+			return Config{}, errors.New("启用 CHECKIN_TURNSTILE_ENABLED 时必须同时启用 CHECKIN_POW_ENABLED")
+		}
+		if cfg.CheckinTurnstileSiteKey == "" {
+			return Config{}, errors.New("缺少环境变量 CHECKIN_TURNSTILE_SITE_KEY")
+		}
+		if cfg.CheckinTurnstileSecretKey == "" {
+			return Config{}, errors.New("缺少环境变量 CHECKIN_TURNSTILE_SECRET_KEY")
+		}
 	}
 
 	redirectURL, err := url.Parse(cfg.RedirectURI)

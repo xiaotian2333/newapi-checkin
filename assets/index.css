@@ -225,6 +225,34 @@ body {
   gap: 12px;
 }
 
+.captcha-panel {
+  width: min(100%, 420px);
+  display: grid;
+  gap: 10px;
+}
+
+.captcha-box {
+  width: 100%;
+  min-height: 88px;
+  padding: 12px;
+  border-radius: var(--border-radius-md);
+  border: 1px solid rgba(242, 133, 94, 0.14);
+  background: rgba(255, 240, 234, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.captcha-widget {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+.captcha-widget > div {
+  max-width: 100%;
+}
+
 /* 按钮样式 */
 .button {
   display: inline-flex;
@@ -276,10 +304,17 @@ body {
 }
 
 /* 签到相关提示 */
-.pow-status, .pow-hint {
+.captcha-status,
+.pow-status,
+.pow-hint {
   text-align: center;
   margin: 0;
   font-size: 13px;
+}
+
+.captcha-status {
+  color: var(--text-muted);
+  font-weight: 600;
 }
 
 .pow-status {

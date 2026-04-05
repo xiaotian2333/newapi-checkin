@@ -21,8 +21,12 @@
 - `CHECKIN_POW_ENABLED`：是否启用签到前的浏览器 PoW，默认 `true`。
 - `CHECKIN_POW_DIFFICULTY`：PoW 难度，单位为前导零 bit，默认 `18`。
 - `CHECKIN_POW_TTL_SECONDS`：PoW 挑战有效期，默认 `300` 秒。
+- `CHECKIN_TURNSTILE_ENABLED`：是否启用签到前的 Turnstile 验证码，默认 `false`。
+- `CHECKIN_TURNSTILE_SITE_KEY`：Turnstile 站点密钥，启用验证码时必填。
+- `CHECKIN_TURNSTILE_SECRET_KEY`：Turnstile 服务端密钥，启用验证码时必填。
 
 签到奖励始终按 `0.01 元` 为最小单位发放。按当前额度换算规则，随机结果一定是 `5000` 的倍数；如果配置区间内不存在这样的值，服务会在启动时报错。
+当 `CHECKIN_TURNSTILE_ENABLED=true` 时，必须同时启用 `CHECKIN_POW_ENABLED=true`。
 
 ## 编译
 
@@ -36,8 +40,8 @@ go build
 
 - `GET /`：返回内嵌的单页面入口。
 - `GET /assets/*`：返回内嵌静态资源。
-- `GET /api/info`：返回当前登录态、用户信息、签到资格、PoW 难度和页面提示。
-- `POST /api/checkin/task`：点击签到后即时下发 PoW 任务。
+- `GET /api/info`：返回当前登录态、用户信息、签到资格、PoW 难度、验证码配置和页面提示。
+- `POST /api/checkin/task`：先校验 `captcha_token`，成功后即时下发 PoW 任务。
 - `POST /api/checkin`：提交 PoW 解并执行签到。
 - `POST /api/logout`：清理当前登录态。
 - `GET /login`：跳转到 Linux Do OAuth2 授权页。
@@ -76,8 +80,9 @@ go build
 
 1. 登录成功后，使用 Linux Do 用户信息中的不可变 `id` 匹配 `users.linux_do_id`。
 2. 若匹配不到用户或匹配到多条用户，直接报错。
-3. 当 `CHECKIN_POW_ENABLED=true` 且用户可签到时，页面会提前展示 PoW 难度，但只会在用户点击签到后才获取带时效的 PoW 任务并开始计时。
-4. 当前前端不会跳转到独立内部页面，而是通过 `/api/info` 和前端状态变量切换页面展示。
-5. 当 `quota >= QUOTA_THRESHOLD` 时，不允许签到。
-6. 当日未签到且 `quota < QUOTA_THRESHOLD` 时，服务会在 `QUOTA_INCREMENT_MIN` 到 `QUOTA_INCREMENT_MAX` 之间随机出本次奖励额度，并保证结果是 `5000` 的倍数，然后写入 `checkins`，并将 `users.quota` 增加该实际值。
-7. 签到成功后，接口会直接返回本次实际获得的额度，并额外向 `logs` 表写入一条 `type = 4` 的日志，内容格式为 `用户签到，获得额度 ¥20.000000 额度`。
+3. 当 `CHECKIN_TURNSTILE_ENABLED=true` 且用户可签到时，用户点击签到后会在按钮下方展开 Turnstile 验证码；验证成功后前端会自动请求 PoW 任务。
+4. 当 `CHECKIN_POW_ENABLED=true` 且用户可签到时，页面会提前展示 PoW 难度，但只会在用户通过验证码后才获取带时效的 PoW 任务并开始计时。
+5. 当前前端不会跳转到独立内部页面，而是通过 `/api/info` 和前端状态变量切换页面展示。
+6. 当 `quota >= QUOTA_THRESHOLD` 时，不允许签到。
+7. 当日未签到且 `quota < QUOTA_THRESHOLD` 时，服务会在 `QUOTA_INCREMENT_MIN` 到 `QUOTA_INCREMENT_MAX` 之间随机出本次奖励额度，并保证结果是 `5000` 的倍数，然后写入 `checkins`，并将 `users.quota` 增加该实际值。
+8. 签到成功后，接口会直接返回本次实际获得的额度，并额外向 `logs` 表写入一条 `type = 4` 的日志，内容格式为 `用户签到，获得额度 ￥20.000000 额度`。

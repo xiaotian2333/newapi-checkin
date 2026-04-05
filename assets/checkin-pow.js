@@ -1,9 +1,15 @@
 (function () {
+  const turnstileScriptURL = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
   const state = {
     app: "booting",
     info: null,
     powStatus: "",
-    busy: false
+    captchaStatus: "",
+    busy: false,
+    captchaExpanded: false,
+    captchaToken: "",
+    captchaWidgetId: null,
+    captchaScriptPromise: null
   };
 
   const elements = {
@@ -19,6 +25,9 @@
     checkinPanel: document.querySelector('[data-role="checkin-panel"]'),
     checkinButton: document.querySelector('[data-role="checkin-button"]'),
     checkinDisabled: document.querySelector('[data-role="checkin-disabled"]'),
+    captchaPanel: document.querySelector('[data-role="captcha-panel"]'),
+    captchaWidget: document.querySelector('[data-role="captcha-widget"]'),
+    captchaStatus: document.querySelector('[data-role="captcha-status"]'),
     logoutButton: document.querySelector('[data-role="logout-button"]'),
     powStatus: document.querySelector('[data-role="pow-status"]'),
     powHint: document.querySelector('[data-role="pow-hint"]'),
@@ -51,6 +60,7 @@
     state.app = "booting";
     state.busy = true;
     state.powStatus = "";
+    state.captchaStatus = "";
     render();
 
     try {
@@ -60,16 +70,13 @@
           "Accept": "application/json"
         }
       });
-      const payload = await response.json();
-      state.info = payload;
-      state.app = deriveAppState(payload);
+      applyInfo(await response.json());
     } catch (error) {
-      state.info = {
+      applyInfo({
         logged_in: false,
         quota_threshold: 0,
         error: error instanceof Error ? error.message : "加载状态失败，请稍后重试"
-      };
-      state.app = "error";
+      });
     } finally {
       state.busy = false;
       render();
@@ -77,17 +84,162 @@
   }
 
   async function handleCheckin() {
-    if (!state.info || !state.info.logged_in || !state.info.can_checkin) {
+    const info = state.info;
+    if (!info || !info.logged_in || !info.can_checkin) {
+      return;
+    }
+
+    const captcha = info.captcha || {};
+    if (captcha.enabled) {
+      if (!state.captchaExpanded) {
+        await openCaptchaPanel();
+        return;
+      }
+      if (!state.captchaToken) {
+        state.app = "awaiting_captcha";
+        state.captchaStatus = "请先完成验证码";
+        render();
+        return;
+      }
+    }
+
+    await startCheckinFlow();
+  }
+
+  async function openCaptchaPanel() {
+    state.captchaExpanded = true;
+    state.app = "awaiting_captcha";
+    state.captchaStatus = "正在加载验证码...";
+    render();
+
+    try {
+      await ensureCaptchaWidget();
+      if (!state.captchaToken) {
+        state.captchaStatus = "请完成验证码后继续签到";
+      }
+    } catch (error) {
+      state.captchaStatus = "";
+      state.info = mergeInfoWithError(state.info, error instanceof Error ? error.message : "加载验证码失败，请稍后重试");
+      state.app = deriveAppState(state.info);
+    }
+    render();
+  }
+
+  async function ensureCaptchaWidget() {
+    const captcha = state.info && state.info.captcha ? state.info.captcha : {};
+    if (!captcha.enabled) {
+      return;
+    }
+
+    await ensureTurnstileScript();
+    if (state.captchaWidgetId !== null) {
+      return;
+    }
+    if (!elements.captchaWidget) {
+      throw new Error("验证码容器不存在");
+    }
+
+    state.captchaWidgetId = window.turnstile.render(elements.captchaWidget, {
+      sitekey: captcha.site_key,
+      action: "checkin",
+      theme: "auto",
+      size: "flexible",
+      callback: function (token) {
+        handleCaptchaSuccess(token);
+      },
+      "error-callback": function () {
+        handleCaptchaFailure("验证码加载失败，请稍后重试");
+      },
+      "expired-callback": function () {
+        handleCaptchaFailure("验证码已过期，请重新验证");
+      },
+      "timeout-callback": function () {
+        handleCaptchaFailure("验证码校验超时，请重新验证");
+      },
+      "response-field": false
+    });
+  }
+
+  async function ensureTurnstileScript() {
+    if (window.turnstile && typeof window.turnstile.render === "function") {
+      return;
+    }
+    if (state.captchaScriptPromise) {
+      return state.captchaScriptPromise;
+    }
+
+    state.captchaScriptPromise = new Promise(function (resolve, reject) {
+      const script = document.createElement("script");
+      script.src = turnstileScriptURL;
+      script.async = true;
+      script.defer = true;
+      script.setAttribute("data-role", "turnstile-api");
+      script.addEventListener("load", function () {
+        if (window.turnstile && typeof window.turnstile.render === "function") {
+          resolve();
+          return;
+        }
+        reject(new Error("验证码脚本加载失败，请稍后重试"));
+      });
+      script.addEventListener("error", function () {
+        reject(new Error("验证码脚本加载失败，请稍后重试"));
+      });
+      document.head.appendChild(script);
+    }).catch(function (error) {
+      state.captchaScriptPromise = null;
+      throw error;
+    });
+
+    return state.captchaScriptPromise;
+  }
+
+  function handleCaptchaSuccess(token) {
+    state.captchaToken = String(token || "").trim();
+    if (!state.captchaToken) {
+      state.captchaStatus = "验证码结果无效，请重试";
+      render();
+      return;
+    }
+
+    state.captchaStatus = "验证通过，正在获取任务...";
+    render();
+    if (!state.busy) {
+      void startCheckinFlow();
+    }
+  }
+
+  function handleCaptchaFailure(message) {
+    resetCaptchaChallenge();
+    state.app = "awaiting_captcha";
+    state.captchaStatus = message;
+    render();
+  }
+
+  async function startCheckinFlow() {
+    if (!state.info || !state.info.logged_in || !state.info.can_checkin || state.busy) {
+      return;
+    }
+
+    const pow = state.info.pow || {};
+    const captcha = state.info.captcha || {};
+    const captchaToken = captcha.enabled ? state.captchaToken : "";
+
+    if (captcha.enabled && !captchaToken) {
+      state.app = "awaiting_captcha";
+      state.captchaStatus = "请先完成验证码";
+      render();
       return;
     }
 
     state.busy = true;
     state.app = "fetching_pow_task";
     state.powStatus = "";
+    if (captcha.enabled) {
+      state.captchaStatus = "验证通过，正在获取任务...";
+    }
     render();
 
     try {
-      const pow = state.info.pow || {};
       let payload = "";
       let signature = "";
       let counter = "";
@@ -97,18 +249,31 @@
         state.powStatus = "正在获取 PoW 任务...";
         render();
 
-        const taskResponse = await fetch("/api/checkin/task", {
-          method: "POST",
-          credentials: "same-origin",
-          headers: {
-            "Accept": "application/json"
+        let taskResponse;
+        let taskPayload;
+        try {
+          taskResponse = await fetch("/api/checkin/task", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: {
+              "Accept": "application/json",
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              captcha_token: captchaToken
+            })
+          });
+          taskPayload = await taskResponse.json();
+        } finally {
+          if (captcha.enabled) {
+            resetCaptchaChallenge();
           }
-        });
-        const taskPayload = await taskResponse.json();
+        }
+
         if (!taskResponse.ok) {
-          state.info = taskPayload;
+          applyInfo(taskPayload);
           state.powStatus = "";
-          state.app = deriveAppState(taskPayload);
+          state.captchaStatus = captcha.enabled ? "请重新完成验证码后再试" : "";
           return;
         }
         if (!taskPayload.enabled) {
@@ -124,6 +289,7 @@
           }
 
           state.app = "submitting_pow";
+          state.captchaStatus = "";
           const solved = await solvePoW(payload, taskPayload.difficulty || pow.difficulty || 0, taskPayload.expires_at || 0, function (message) {
             state.powStatus = message;
             render();
@@ -147,11 +313,14 @@
           pow_hash: hash
         })
       });
-      const payloadState = await response.json();
-      state.info = payloadState;
-      state.app = deriveAppState(payloadState);
+      applyInfo(await response.json());
       state.powStatus = "";
+      state.captchaStatus = "";
     } catch (error) {
+      if (captcha.enabled) {
+        resetCaptchaChallenge();
+        state.captchaStatus = "请重新完成验证码后再试";
+      }
       state.info = mergeInfoWithError(state.info, error instanceof Error ? error.message : "签到失败，请稍后重试");
       state.app = deriveAppState(state.info);
     } finally {
@@ -172,8 +341,7 @@
           "Accept": "application/json"
         }
       });
-      state.info = await response.json();
-      state.app = deriveAppState(state.info);
+      applyInfo(await response.json());
       state.powStatus = "";
     } catch (error) {
       state.info = mergeInfoWithError(state.info, error instanceof Error ? error.message : "退出登录失败，请稍后重试");
@@ -220,17 +388,25 @@
         ? "获取任务中..."
         : state.busy && state.app === "submitting_pow"
           ? "浏览器验证中..."
-          : "立即签到";
+          : isCaptchaAwaiting(info)
+            ? "等待验证码"
+            : "立即签到";
     }
     if (elements.checkinDisabled) {
       elements.checkinDisabled.textContent = getDisabledCheckinText(info);
     }
 
+    const captcha = info.captcha || {};
+    const showCaptcha = Boolean(captcha.enabled && info.logged_in && info.can_checkin && state.captchaExpanded);
+    toggle(elements.captchaPanel, showCaptcha);
+    toggle(elements.captchaStatus, Boolean(state.captchaStatus) && showCaptcha);
+    setText(elements.captchaStatus, state.captchaStatus);
+
     const pow = info.pow || {};
     toggle(elements.powStatus, Boolean(state.powStatus) && info.logged_in && info.can_checkin);
     setText(elements.powStatus, state.powStatus);
     toggle(elements.powHint, Boolean(pow.enabled) && info.logged_in && info.can_checkin);
-    setText(elements.powHint, pow.enabled ? "本次签到需由浏览器完成 PoW 验证，当前难度为 " + (pow.difficulty || 0) + " bit" : "");
+    setText(elements.powHint, buildPowHintText(pow, captcha));
 
     toggle(elements.lastCheckin, Boolean(info.last_checkin));
     setLastCheckin(elements.lastCheckin, info.last_checkin);
@@ -255,11 +431,54 @@
     return "ineligible";
   }
 
+  function applyInfo(info) {
+    state.info = info;
+    state.app = deriveAppState(info);
+    if (!info || !info.logged_in || !info.can_checkin || !((info.captcha || {}).enabled)) {
+      resetCaptchaState();
+    }
+  }
+
   function mergeInfoWithError(info, message) {
     const next = Object.assign({}, info || {});
     next.error = message;
     next.message = "";
     return next;
+  }
+
+  function isCaptchaAwaiting(info) {
+    const captcha = info.captcha || {};
+    return Boolean(captcha.enabled && state.captchaExpanded && !state.captchaToken && !state.busy);
+  }
+
+  function buildPowHintText(pow, captcha) {
+    if (!pow.enabled) {
+      return "";
+    }
+    if (captcha.enabled) {
+      return "完成验证码后将继续执行浏览器 PoW，当前难度为 " + (pow.difficulty || 0) + " bit";
+    }
+    return "本次签到需由浏览器完成 PoW 验证，当前难度为 " + (pow.difficulty || 0) + " bit";
+  }
+
+  function resetCaptchaState() {
+    state.captchaExpanded = false;
+    state.captchaStatus = "";
+    resetCaptchaChallenge();
+  }
+
+  function resetCaptchaChallenge() {
+    state.captchaToken = "";
+    if (state.captchaWidgetId === null) {
+      return;
+    }
+    if (!window.turnstile || typeof window.turnstile.reset !== "function") {
+      return;
+    }
+    try {
+      window.turnstile.reset(state.captchaWidgetId);
+    } catch (error) {
+    }
   }
 
   function getDisabledCheckinText(info) {
