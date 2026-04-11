@@ -127,6 +127,7 @@ body {
   padding: 10px 40px 40px;
   display: grid;
   gap: 24px;
+  align-content: start;
 }
 
 .hidden {
@@ -494,9 +495,42 @@ code {
 
 /* 响应式调整 */
 @media (min-width: 960px) {
+  body {
+    height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
+  }
+
   .layout {
+    height: calc(100vh - 48px);
+    height: calc(100dvh - 48px);
     grid-template-columns: minmax(320px, 380px) minmax(0, 680px);
     grid-template-areas: "leaderboard app";
+    align-items: stretch;
+  }
+
+  .app-card,
+  .leaderboard-card {
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .app-card {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .content {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+  }
+
+  .leaderboard-content {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
   }
 }
 
