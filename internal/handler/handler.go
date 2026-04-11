@@ -28,10 +28,11 @@ var ErrInvalidCheckinRequest = errors.New("签到请求格式非法")
 var ErrInvalidCheckinTaskRequest = errors.New("验证码请求格式非法")
 
 type Options struct {
-	Config    config.Config
-	Store     userStore
-	Auth      authService
-	Turnstile captchaVerifier
+	Config      config.Config
+	Store       userStore
+	Auth        authService
+	Turnstile   captchaVerifier
+	Leaderboard *LeaderboardCache
 }
 
 type App struct {
@@ -39,22 +40,25 @@ type App struct {
 	store        userStore
 	auth         authService
 	turnstile    captchaVerifier
+	leaderboard  *LeaderboardCache
 	assetHandler http.Handler
 	indexHTML    []byte
 }
 
 type AppState struct {
-	LoggedIn       bool                 `json:"logged_in"`
-	Username       string               `json:"username,omitempty"`
-	LinuxDoID      string               `json:"linux_do_id,omitempty"`
-	Quota          int64                `json:"quota,omitempty"`
-	QuotaThreshold int64                `json:"quota_threshold"`
-	CanCheckin     bool                 `json:"can_checkin"`
-	Message        string               `json:"message,omitempty"`
-	Error          string               `json:"error,omitempty"`
-	LastCheckin    *store.CheckinResult `json:"last_checkin,omitempty"`
-	PoW            *PoWClientState      `json:"pow,omitempty"`
-	Captcha        *CaptchaClientState  `json:"captcha,omitempty"`
+	LoggedIn        bool                           `json:"logged_in"`
+	Username        string                         `json:"username,omitempty"`
+	LinuxDoID       string                         `json:"linux_do_id,omitempty"`
+	Quota           int64                          `json:"quota,omitempty"`
+	QuotaThreshold  int64                          `json:"quota_threshold"`
+	CanCheckin      bool                           `json:"can_checkin"`
+	Message         string                         `json:"message,omitempty"`
+	Error           string                         `json:"error,omitempty"`
+	LeaderboardDate string                         `json:"leaderboard_date"`
+	Leaderboard     []store.CheckinLeaderboardItem `json:"leaderboard"`
+	LastCheckin     *store.CheckinResult           `json:"last_checkin,omitempty"`
+	PoW             *PoWClientState                `json:"pow,omitempty"`
+	Captcha         *CaptchaClientState            `json:"captcha,omitempty"`
 }
 
 type PoWClientState struct {
@@ -93,6 +97,9 @@ func New(opts Options) (*App, error) {
 	if opts.Turnstile == nil && opts.Config.CheckinTurnstileEnabled {
 		opts.Turnstile = turnstile.NewService(opts.Config.CheckinTurnstileSecretKey)
 	}
+	if opts.Leaderboard == nil {
+		opts.Leaderboard = NewLeaderboardCache(opts.Store, time.Now, defaultLeaderboardLimit)
+	}
 
 	assetHandler, err := newAssetHandler()
 	if err != nil {
@@ -108,6 +115,7 @@ func New(opts Options) (*App, error) {
 		store:        opts.Store,
 		auth:         opts.Auth,
 		turnstile:    opts.Turnstile,
+		leaderboard:  opts.Leaderboard,
 		assetHandler: assetHandler,
 		indexHTML:    indexHTML,
 	}, nil
@@ -236,16 +244,22 @@ func (a *App) handleCheckin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Printf("用户%d签到成功", result.UserID)
+	if err := a.refreshLeaderboard(r.Context(), result.CheckinDate); err != nil {
+		log.Printf("刷新签到排行榜失败: %v", err)
+	}
+	leaderboardDate, leaderboard := a.snapshotLeaderboard()
 
 	state := AppState{
-		LoggedIn:       true,
-		Username:       session.Username,
-		LinuxDoID:      session.LinuxDoID,
-		Quota:          result.QuotaAfter,
-		QuotaThreshold: a.config.QuotaThreshold,
-		CanCheckin:     false,
-		Message:        fmt.Sprintf("签到成功，额度已增加 %s", formatQuotaYuan(result.QuotaAwarded)),
-		LastCheckin:    &result,
+		LoggedIn:        true,
+		Username:        session.Username,
+		LinuxDoID:       session.LinuxDoID,
+		Quota:           result.QuotaAfter,
+		QuotaThreshold:  a.config.QuotaThreshold,
+		CanCheckin:      false,
+		Message:         fmt.Sprintf("签到成功，额度已增加 %s", formatQuotaYuan(result.QuotaAwarded)),
+		LeaderboardDate: leaderboardDate,
+		Leaderboard:     leaderboard,
+		LastCheckin:     &result,
 	}
 	writeJSON(w, http.StatusOK, state)
 }
@@ -329,14 +343,17 @@ func (a *App) loadAppState(ctx context.Context, session auth.SessionClaims, last
 		return AppState{}, err
 	}
 
+	leaderboardDate, leaderboard := a.snapshotLeaderboard()
 	state := AppState{
-		LoggedIn:       true,
-		Username:       session.Username,
-		LinuxDoID:      session.LinuxDoID,
-		Quota:          user.Quota,
-		QuotaThreshold: a.config.QuotaThreshold,
-		CanCheckin:     user.Quota < a.config.QuotaThreshold,
-		LastCheckin:    lastCheckin,
+		LoggedIn:        true,
+		Username:        session.Username,
+		LinuxDoID:       session.LinuxDoID,
+		Quota:           user.Quota,
+		QuotaThreshold:  a.config.QuotaThreshold,
+		CanCheckin:      user.Quota < a.config.QuotaThreshold,
+		LeaderboardDate: leaderboardDate,
+		Leaderboard:     leaderboard,
+		LastCheckin:     lastCheckin,
 	}
 	if state.CanCheckin {
 		state.Message = "当前余额低于阈值，可以签到"
@@ -363,12 +380,15 @@ func (a *App) writeStateError(w http.ResponseWriter, ctx context.Context, sessio
 	status := statusForError(err)
 	state, loadErr := a.loadAppState(ctx, session, lastCheckin)
 	if loadErr != nil {
+		leaderboardDate, leaderboard := a.snapshotLeaderboard()
 		writeJSON(w, statusForError(loadErr), AppState{
-			LoggedIn:       true,
-			Username:       session.Username,
-			LinuxDoID:      session.LinuxDoID,
-			QuotaThreshold: a.config.QuotaThreshold,
-			Error:          loadErr.Error(),
+			LoggedIn:        true,
+			Username:        session.Username,
+			LinuxDoID:       session.LinuxDoID,
+			QuotaThreshold:  a.config.QuotaThreshold,
+			LeaderboardDate: leaderboardDate,
+			Leaderboard:     leaderboard,
+			Error:           loadErr.Error(),
 		})
 		return
 	}
@@ -384,9 +404,26 @@ func (a *App) writeStateError(w http.ResponseWriter, ctx context.Context, sessio
 }
 
 func (a *App) anonymousState() AppState {
+	leaderboardDate, leaderboard := a.snapshotLeaderboard()
 	return AppState{
-		QuotaThreshold: a.config.QuotaThreshold,
+		QuotaThreshold:  a.config.QuotaThreshold,
+		LeaderboardDate: leaderboardDate,
+		Leaderboard:     leaderboard,
 	}
+}
+
+func (a *App) refreshLeaderboard(ctx context.Context, checkinDate string) error {
+	if a.leaderboard == nil {
+		return nil
+	}
+	return a.leaderboard.RefreshDate(ctx, checkinDate)
+}
+
+func (a *App) snapshotLeaderboard() (string, []store.CheckinLeaderboardItem) {
+	if a.leaderboard == nil {
+		return "", []store.CheckinLeaderboardItem{}
+	}
+	return a.leaderboard.Snapshot()
 }
 
 func newAssetHandler() (http.Handler, error) {

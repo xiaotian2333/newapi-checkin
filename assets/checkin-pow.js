@@ -31,7 +31,10 @@
     logoutButton: document.querySelector('[data-role="logout-button"]'),
     powStatus: document.querySelector('[data-role="pow-status"]'),
     powHint: document.querySelector('[data-role="pow-hint"]'),
-    lastCheckin: document.querySelector('[data-role="last-checkin"]')
+    lastCheckin: document.querySelector('[data-role="last-checkin"]'),
+    leaderboardDate: document.querySelector('[data-role="leaderboard-date"]'),
+    leaderboardEmpty: document.querySelector('[data-role="leaderboard-empty"]'),
+    leaderboardList: document.querySelector('[data-role="leaderboard-list"]')
   };
 
   if (!elements.loading) {
@@ -410,6 +413,7 @@
 
     toggle(elements.lastCheckin, Boolean(info.last_checkin));
     setLastCheckin(elements.lastCheckin, info.last_checkin);
+    renderLeaderboard(info.leaderboard || [], info.leaderboard_date || "");
   }
 
   function deriveAppState(info) {
@@ -520,6 +524,100 @@
       '</code> 完成签到，本次增加额度 <code>' + escapeHTML(formatQuotaYuan(lastCheckin.quota_awarded || 0)) + '</code>，额度从 <code>' + escapeHTML(formatQuotaYuan(lastCheckin.quota_before || 0)) +
       '</code> 变为 <code>' + escapeHTML(formatQuotaYuan(lastCheckin.quota_after || 0)) +
       '</code>';
+  }
+
+  function renderLeaderboard(items, checkinDate) {
+    if (elements.leaderboardDate) {
+      elements.leaderboardDate.textContent = "统计日期：" + (checkinDate || "-");
+    }
+    if (!elements.leaderboardList || !elements.leaderboardEmpty) {
+      return;
+    }
+
+    elements.leaderboardList.replaceChildren();
+    toggle(elements.leaderboardEmpty, !items.length);
+    toggle(elements.leaderboardList, Boolean(items.length));
+    if (!items.length) {
+      return;
+    }
+
+    items.forEach(function (item) {
+      const listItem = document.createElement("li");
+      listItem.className = "leaderboard-item";
+
+      const rank = document.createElement("div");
+      rank.className = "leaderboard-rank";
+      rank.textContent = String(item.rank || 0);
+      listItem.appendChild(rank);
+
+      const main = document.createElement("div");
+      main.className = "leaderboard-main";
+
+      const topLine = document.createElement("div");
+      topLine.className = "leaderboard-topline";
+
+      const name = document.createElement("div");
+      name.className = "leaderboard-name";
+
+      const medal = getLeaderboardMedal(item.rank || 0);
+      if (medal) {
+        const medalNode = document.createElement("span");
+        medalNode.className = "leaderboard-medal";
+        medalNode.setAttribute("aria-hidden", "true");
+        medalNode.textContent = medal;
+        name.appendChild(medalNode);
+      }
+
+      const nameText = document.createElement("span");
+      nameText.className = "leaderboard-name-text";
+      nameText.textContent = "用户 " + String(item.user_id || 0);
+      name.appendChild(nameText);
+      topLine.appendChild(name);
+
+      const award = document.createElement("div");
+      award.className = "leaderboard-award";
+      award.textContent = formatQuotaYuan(item.quota_awarded || 0);
+      topLine.appendChild(award);
+      main.appendChild(topLine);
+
+      const meta = document.createElement("div");
+      meta.className = "leaderboard-meta";
+      meta.textContent = "签到时间 " + formatCheckinTime(item.created_at || 0);
+      main.appendChild(meta);
+
+      listItem.appendChild(main);
+      elements.leaderboardList.appendChild(listItem);
+    });
+  }
+
+  function getLeaderboardMedal(rank) {
+    if (rank === 1) {
+      return "🥇";
+    }
+    if (rank === 2) {
+      return "🥈";
+    }
+    if (rank === 3) {
+      return "🥉";
+    }
+    return "";
+  }
+
+  function formatCheckinTime(value) {
+    if (!value) {
+      return "-";
+    }
+
+    const date = new Date(Number(value) * 1000);
+    if (Number.isNaN(date.getTime())) {
+      return "-";
+    }
+
+    return [date.getHours(), date.getMinutes(), date.getSeconds()]
+      .map(function (part) {
+        return String(part).padStart(2, "0");
+      })
+      .join(":");
   }
 
   function escapeHTML(value) {

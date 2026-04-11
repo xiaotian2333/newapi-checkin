@@ -35,10 +35,16 @@ func Run() {
 	}
 
 	authService := auth.NewService(cfg)
+	leaderboardCache := handler.NewLeaderboardCache(dbStore, time.Now, 10)
+	if err := leaderboardCache.Refresh(context.Background()); err != nil {
+		log.Printf("预热签到排行榜失败: %v", err)
+	}
+
 	webApp, err := handler.New(handler.Options{
-		Config: cfg,
-		Store:  dbStore,
-		Auth:   authService,
+		Config:      cfg,
+		Store:       dbStore,
+		Auth:        authService,
+		Leaderboard: leaderboardCache,
 	})
 	if err != nil {
 		log.Fatalf("初始化应用失败: %v", err)

@@ -12,6 +12,7 @@ import (
 type userStore interface {
 	GetUserByLinuxDoID(ctx context.Context, linuxDoID string) (store.User, error)
 	Checkin(ctx context.Context, linuxDoID, username string, threshold, quotaAwarded int64, now time.Time) (store.CheckinResult, error)
+	GetDailyLeaderboard(ctx context.Context, checkinDate string, limit int) ([]store.CheckinLeaderboardItem, error)
 }
 
 type authService interface {

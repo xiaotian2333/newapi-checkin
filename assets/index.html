@@ -10,66 +10,81 @@
 </head>
 <body>
   <div class="warm-glow"></div>
-  <main class="card">
-    <section class="hero">
-      <h1>小天公益站</h1>
-      <p class="subtitle">每日签到</p>
-    </section>
-
-    <section class="content">
-      <div class="notice hidden" data-role="notice"></div>
-      <div class="error hidden" data-role="error"></div>
-
-      <div class="loading" data-role="loading">
-        <span class="loading-spinner"></span>
-        正在加载当前状态...
-      </div>
-
-      <section class="grid hidden" data-role="user-panel">
-        <article class="stat">
-          <div class="stat-icon">👋</div>
-          <div class="stat-info">
-            <div class="label">登录用户</div>
-            <div class="value" data-role="username">-</div>
-          </div>
-        </article>
-        <article class="stat">
-          <div class="stat-icon">✨</div>
-          <div class="stat-info">
-            <div class="label">当前额度</div>
-            <div class="value" data-role="quota">-</div>
-          </div>
-        </article>
-        <article class="stat">
-          <div class="stat-icon">🎯</div>
-          <div class="stat-info">
-            <div class="label">签到阈值</div>
-            <div class="value" data-role="quota-threshold">-</div>
-          </div>
-        </article>
+  <main class="layout">
+    <section class="card app-card">
+      <section class="hero">
+        <h1>小天公益站</h1>
+        <p class="subtitle">每日签到</p>
       </section>
 
-      <div class="actions">
-        <a class="button primary hidden" data-role="login-button" href="/login">🌿 使用 Linux Do 登录</a>
+      <section class="content">
+        <div class="notice hidden" data-role="notice"></div>
+        <div class="error hidden" data-role="error"></div>
 
-        <div class="checkin-panel hidden" data-role="checkin-panel">
-          <button class="button primary checkin-btn" type="button" data-role="checkin-button">立即签到 ☀️</button>
-          <div class="captcha-panel hidden" data-role="captcha-panel">
-            <div class="captcha-box">
-              <div class="captcha-widget" data-role="captcha-widget"></div>
-            </div>
-            <p class="captcha-status hidden" data-role="captcha-status"></p>
-          </div>
-          <button class="button disabled hidden" type="button" data-role="checkin-disabled" disabled>明天再来签到吧</button>
-          <p class="pow-status hidden" data-role="pow-status"></p>
-          <p class="pow-hint hidden" data-role="pow-hint"></p>
+        <div class="loading" data-role="loading">
+          <span class="loading-spinner"></span>
+          正在加载当前状态...
         </div>
 
-        <button class="button secondary hidden" type="button" data-role="logout-button">退出登录</button>
-      </div>
+        <section class="grid hidden" data-role="user-panel">
+          <article class="stat">
+            <div class="stat-icon">👋</div>
+            <div class="stat-info">
+              <div class="label">登录用户</div>
+              <div class="value" data-role="username">-</div>
+            </div>
+          </article>
+          <article class="stat">
+            <div class="stat-icon">✨</div>
+            <div class="stat-info">
+              <div class="label">当前额度</div>
+              <div class="value" data-role="quota">-</div>
+            </div>
+          </article>
+          <article class="stat">
+            <div class="stat-icon">🎯</div>
+            <div class="stat-info">
+              <div class="label">签到阈值</div>
+              <div class="value" data-role="quota-threshold">-</div>
+            </div>
+          </article>
+        </section>
 
-      <div class="detail hidden" data-role="last-checkin"></div>
+        <div class="actions">
+          <a class="button primary hidden" data-role="login-button" href="/login">🌿 使用 Linux Do 登录</a>
+
+          <div class="checkin-panel hidden" data-role="checkin-panel">
+            <button class="button primary checkin-btn" type="button" data-role="checkin-button">立即签到 ☀️</button>
+            <div class="captcha-panel hidden" data-role="captcha-panel">
+              <div class="captcha-box">
+                <div class="captcha-widget" data-role="captcha-widget"></div>
+              </div>
+              <p class="captcha-status hidden" data-role="captcha-status"></p>
+            </div>
+            <button class="button disabled hidden" type="button" data-role="checkin-disabled" disabled>明天再来签到吧</button>
+            <p class="pow-status hidden" data-role="pow-status"></p>
+            <p class="pow-hint hidden" data-role="pow-hint"></p>
+          </div>
+
+          <button class="button secondary hidden" type="button" data-role="logout-button">退出登录</button>
+        </div>
+
+        <div class="detail hidden" data-role="last-checkin"></div>
+      </section>
     </section>
+
+    <aside class="card leaderboard-card">
+      <section class="leaderboard-hero">
+        <p class="leaderboard-eyebrow">Today Board</p>
+        <h2>签到金额排行榜</h2>
+        <p class="leaderboard-subtitle" data-role="leaderboard-date">统计日期：-</p>
+      </section>
+
+      <section class="leaderboard-content">
+        <p class="leaderboard-empty hidden" data-role="leaderboard-empty">今日暂时无人签到</p>
+        <ol class="leaderboard-list hidden" data-role="leaderboard-list"></ol>
+      </section>
+    </aside>
   </main>
 </body>
 </html>

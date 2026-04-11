@@ -40,9 +40,9 @@ go build
 
 - `GET /`：返回内嵌的单页面入口。
 - `GET /assets/*`：返回内嵌静态资源。
-- `GET /api/info`：返回当前登录态、用户信息、签到资格、PoW 难度、验证码配置和页面提示。
+- `GET /api/info`：返回当前登录态、用户信息、签到资格、PoW 难度、验证码配置、页面提示和当天签到金额排行榜。
 - `POST /api/checkin/task`：先校验 `captcha_token`，成功后即时下发 PoW 任务。
-- `POST /api/checkin`：提交 PoW 解并执行签到。
+- `POST /api/checkin`：提交 PoW 解并执行签到，成功后同步返回最新排行榜。
 - `POST /api/logout`：清理当前登录态。
 - `GET /login`：跳转到 Linux Do OAuth2 授权页。
 - `GET /auth/callback`：处理 OAuth2 回调，结束后重定向回 `/`。
@@ -86,6 +86,8 @@ go build
 6. 当 `quota >= QUOTA_THRESHOLD` 时，不允许签到。
 7. 当日未签到且 `quota < QUOTA_THRESHOLD` 时，服务会在 `QUOTA_INCREMENT_MIN` 到 `QUOTA_INCREMENT_MAX` 之间随机出本次奖励额度，并保证结果是 `5000` 的倍数，然后写入 `checkins`，并将 `users.quota` 增加该实际值。
 8. 签到成功后，接口会直接返回本次实际获得的额度，并额外向 `logs` 表写入一条 `type = 4` 的日志，内容格式为 `用户签到，获得额度 ￥20.000000 额度`。
+9. 服务启动时会预热一次当天签到金额排行榜缓存；每次签到成功后会基于 `checkins` 表重新读取当天前 10 名并刷新缓存。
+10. 排行榜按 `quota_awarded` 降序排列；若签到金额相同，则按 `created_at` 升序排列，先签到的用户排在前面。
 
 ## 友情链接
 

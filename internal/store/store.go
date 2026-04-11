@@ -42,6 +42,14 @@ type CheckinResult struct {
 	QuotaAfter   int64  `json:"quota_after"`
 }
 
+type CheckinLeaderboardItem struct {
+	Rank         int    `json:"rank"`
+	UserID       int64  `json:"user_id"`
+	CheckinDate  string `json:"checkin_date"`
+	QuotaAwarded int64  `json:"quota_awarded"`
+	CreatedAt    int64  `json:"created_at"`
+}
+
 func (s *Store) ValidateSchema(ctx context.Context) error {
 	required := map[string][]string{
 		"users":    {"id", "linux_do_id", "quota"},
@@ -238,6 +246,38 @@ func (s *Store) Checkin(ctx context.Context, linuxDoID, username string, thresho
 		QuotaBefore:  quota,
 		QuotaAfter:   quota + quotaAwarded,
 	}, nil
+}
+
+func (s *Store) GetDailyLeaderboard(ctx context.Context, checkinDate string, limit int) ([]CheckinLeaderboardItem, error) {
+	if limit <= 0 {
+		return []CheckinLeaderboardItem{}, nil
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT user_id, checkin_date, quota_awarded, created_at
+		FROM checkins
+		WHERE checkin_date = $1
+		ORDER BY quota_awarded DESC, created_at ASC, user_id ASC
+		LIMIT $2
+	`, checkinDate, limit)
+	if err != nil {
+		return nil, fmt.Errorf("查询签到排行榜失败: %w", err)
+	}
+	defer rows.Close()
+
+	items := make([]CheckinLeaderboardItem, 0, limit)
+	for rows.Next() {
+		var item CheckinLeaderboardItem
+		if err := rows.Scan(&item.UserID, &item.CheckinDate, &item.QuotaAwarded, &item.CreatedAt); err != nil {
+			return nil, fmt.Errorf("读取签到排行榜失败: %w", err)
+		}
+		item.Rank = len(items) + 1
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("遍历签到排行榜失败: %w", err)
+	}
+	return items, nil
 }
 
 func insertCheckinLog(ctx context.Context, tx *sql.Tx, userID int64, username string, increment, createdAt int64) error {
