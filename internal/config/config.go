@@ -19,8 +19,9 @@ const (
 	defaultPoWEnabled        = true
 	defaultPoWDifficulty     = 18
 	defaultPoWTTLSeconds     = 300
-	defaultTurnstileEnabled  = false
-	maxPoWDifficulty         = 256
+	defaultTurnstileEnabled    = false
+	defaultLeaderboardLimit    = 10
+	maxPoWDifficulty           = 256
 )
 
 type Config struct {
@@ -47,6 +48,7 @@ type Config struct {
 	CheckinTurnstileEnabled   bool
 	CheckinTurnstileSiteKey   string
 	CheckinTurnstileSecretKey string
+	LeaderboardLimit          int
 }
 
 func Load() (Config, error) {
@@ -82,6 +84,10 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	leaderboardLimit, err := intOrDefault("LEADERBOARD_LIMIT", defaultLeaderboardLimit)
+	if err != nil {
+		return Config{}, err
+	}
 
 	cfg := Config{
 		DatabaseURL:               strings.TrimSpace(os.Getenv("DATABASE_URL")),
@@ -106,6 +112,7 @@ func Load() (Config, error) {
 		CheckinTurnstileEnabled:   turnstileEnabled,
 		CheckinTurnstileSiteKey:   strings.TrimSpace(os.Getenv("CHECKIN_TURNSTILE_SITE_KEY")),
 		CheckinTurnstileSecretKey: strings.TrimSpace(os.Getenv("CHECKIN_TURNSTILE_SECRET_KEY")),
+		LeaderboardLimit:          leaderboardLimit,
 	}
 
 	if cfg.DatabaseURL == "" {
@@ -131,6 +138,9 @@ func Load() (Config, error) {
 	}
 	if cfg.CheckinPoWTTL <= 0 {
 		return Config{}, errors.New("CHECKIN_POW_TTL_SECONDS 必须大于 0")
+	}
+	if cfg.LeaderboardLimit <= 0 {
+		return Config{}, errors.New("LEADERBOARD_LIMIT 必须大于 0")
 	}
 	if cfg.CheckinTurnstileEnabled {
 		if !cfg.CheckinPoWEnabled {

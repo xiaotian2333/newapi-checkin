@@ -98,7 +98,7 @@ func New(opts Options) (*App, error) {
 		opts.Turnstile = turnstile.NewService(opts.Config.CheckinTurnstileSecretKey)
 	}
 	if opts.Leaderboard == nil {
-		opts.Leaderboard = NewLeaderboardCache(opts.Store, time.Now, defaultLeaderboardLimit)
+		opts.Leaderboard = NewLeaderboardCache(opts.Store, time.Now, opts.Config.LeaderboardLimit)
 	}
 
 	assetHandler, err := newAssetHandler()

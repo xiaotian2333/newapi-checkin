@@ -35,7 +35,7 @@ func Run() {
 	}
 
 	authService := auth.NewService(cfg)
-	leaderboardCache := handler.NewLeaderboardCache(dbStore, time.Now, 10)
+	leaderboardCache := handler.NewLeaderboardCache(dbStore, time.Now, cfg.LeaderboardLimit)
 	if err := leaderboardCache.Refresh(context.Background()); err != nil {
 		log.Printf("预热签到排行榜失败: %v", err)
 	}
