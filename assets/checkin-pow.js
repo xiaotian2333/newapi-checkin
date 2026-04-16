@@ -570,7 +570,7 @@
 
       const nameText = document.createElement("span");
       nameText.className = "leaderboard-name-text";
-      nameText.textContent = "用户 " + String(item.user_id || 0);
+      nameText.textContent = item.username || ("用户 " + String(item.user_id || 0));
       name.appendChild(nameText);
       topLine.appendChild(name);
 

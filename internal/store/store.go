@@ -45,6 +45,7 @@ type CheckinResult struct {
 type CheckinLeaderboardItem struct {
 	Rank         int    `json:"rank"`
 	UserID       int64  `json:"user_id"`
+	Username     string `json:"username"`
 	CheckinDate  string `json:"checkin_date"`
 	QuotaAwarded int64  `json:"quota_awarded"`
 	CreatedAt    int64  `json:"created_at"`
@@ -52,7 +53,7 @@ type CheckinLeaderboardItem struct {
 
 func (s *Store) ValidateSchema(ctx context.Context) error {
 	required := map[string][]string{
-		"users":    {"id", "linux_do_id", "quota"},
+		"users":    {"id", "linux_do_id", "quota", "username"},
 		"checkins": {"user_id", "checkin_date", "quota_awarded", "created_at"},
 		"logs": {
 			"user_id", "created_at", "type", "content", "username",
@@ -254,10 +255,11 @@ func (s *Store) GetDailyLeaderboard(ctx context.Context, checkinDate string, lim
 	}
 
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT user_id, checkin_date, quota_awarded, created_at
-		FROM checkins
-		WHERE checkin_date = $1
-		ORDER BY quota_awarded DESC, created_at ASC, user_id ASC
+		SELECT c.user_id, c.checkin_date, c.quota_awarded, c.created_at, COALESCE(u.username, '')
+		FROM checkins c
+		LEFT JOIN users u ON c.user_id = u.id
+		WHERE c.checkin_date = $1
+		ORDER BY c.quota_awarded DESC, c.created_at ASC, c.user_id ASC
 		LIMIT $2
 	`, checkinDate, limit)
 	if err != nil {
@@ -268,7 +270,7 @@ func (s *Store) GetDailyLeaderboard(ctx context.Context, checkinDate string, lim
 	items := make([]CheckinLeaderboardItem, 0, limit)
 	for rows.Next() {
 		var item CheckinLeaderboardItem
-		if err := rows.Scan(&item.UserID, &item.CheckinDate, &item.QuotaAwarded, &item.CreatedAt); err != nil {
+		if err := rows.Scan(&item.UserID, &item.CheckinDate, &item.QuotaAwarded, &item.CreatedAt, &item.Username); err != nil {
 			return nil, fmt.Errorf("读取签到排行榜失败: %w", err)
 		}
 		item.Rank = len(items) + 1
