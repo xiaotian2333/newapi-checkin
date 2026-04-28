@@ -71,6 +71,7 @@ type PoWClientState struct {
 
 type CaptchaClientState struct {
 	Enabled bool   `json:"enabled"`
+	Type    string `json:"type,omitempty"`
 	SiteKey string `json:"site_key,omitempty"`
 }
 
@@ -95,7 +96,11 @@ func New(opts Options) (*App, error) {
 		opts.Auth = auth.NewService(opts.Config)
 	}
 	if opts.Turnstile == nil && opts.Config.CheckinTurnstileEnabled {
-		opts.Turnstile = turnstile.NewService(opts.Config.CheckinTurnstileSecretKey)
+		secretKey := opts.Config.CheckinCaptchaSecretKey
+		if opts.Config.CheckinTurnstileType == "cloudflare" {
+			secretKey = opts.Config.CheckinTurnstileSecretKey
+		}
+		opts.Turnstile = turnstile.NewServiceWithType(secretKey, opts.Config.CheckinTurnstileType)
 	}
 	if opts.Leaderboard == nil {
 		opts.Leaderboard = NewLeaderboardCache(opts.Store, time.Now, opts.Config.LeaderboardLimit)
@@ -364,9 +369,14 @@ func (a *App) loadAppState(ctx context.Context, session auth.SessionClaims, last
 			}
 		}
 		if a.config.CheckinTurnstileEnabled {
+			siteKey := a.config.CheckinTurnstileSiteKey
+			if a.config.CheckinTurnstileType == "hcaptcha" {
+				siteKey = a.config.CheckinCaptchaSiteKey
+			}
 			state.Captcha = &CaptchaClientState{
 				Enabled: true,
-				SiteKey: a.config.CheckinTurnstileSiteKey,
+				Type:    a.config.CheckinTurnstileType,
+				SiteKey: siteKey,
 			}
 		}
 		return state, nil

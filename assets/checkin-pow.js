@@ -1,5 +1,8 @@
 (function () {
-  const turnstileScriptURL = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+  const captchaScriptURLs = {
+    cloudflare: "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit",
+    hcaptcha: "https://js.hcaptcha.com/1/api.js?render=explicit"
+  }
   const state = {
     app: "booting",
     info: null,
@@ -134,7 +137,8 @@
       return;
     }
 
-    await ensureTurnstileScript();
+    const captchaType = captcha.type || "cloudflare";
+    await ensureCaptchaScript(captchaType);
     if (state.captchaWidgetId !== null) {
       return;
     }
@@ -142,30 +146,56 @@
       throw new Error("验证码容器不存在");
     }
 
-    state.captchaWidgetId = window.turnstile.render(elements.captchaWidget, {
-      sitekey: captcha.site_key,
-      action: "checkin",
-      theme: "auto",
-      size: "flexible",
-      callback: function (token) {
-        handleCaptchaSuccess(token);
-      },
-      "error-callback": function () {
-        handleCaptchaFailure("验证码加载失败，请稍后重试");
-      },
-      "expired-callback": function () {
-        handleCaptchaFailure("验证码已过期，请重新验证");
-      },
-      "timeout-callback": function () {
-        handleCaptchaFailure("验证码校验超时，请重新验证");
-      },
-      "response-field": false
-    });
+    if (captchaType === "hcaptcha") {
+      state.captchaWidgetId = window.hcaptcha.render(elements.captchaWidget, {
+        sitekey: captcha.site_key,
+        theme: "auto",
+        size: "normal",
+        callback: function (token) {
+          handleCaptchaSuccess(token);
+        },
+        "error-callback": function () {
+          handleCaptchaFailure("验证码加载失败，请稍后重试");
+        },
+        "expired-callback": function () {
+          handleCaptchaFailure("验证码已过期，请重新验证");
+        },
+        "chalexpired-callback": function () {
+          handleCaptchaFailure("验证码校验超时，请重新验证");
+        }
+      });
+    } else {
+      state.captchaWidgetId = window.turnstile.render(elements.captchaWidget, {
+        sitekey: captcha.site_key,
+        action: "checkin",
+        theme: "auto",
+        size: "flexible",
+        callback: function (token) {
+          handleCaptchaSuccess(token);
+        },
+        "error-callback": function () {
+          handleCaptchaFailure("验证码加载失败，请稍后重试");
+        },
+        "expired-callback": function () {
+          handleCaptchaFailure("验证码已过期，请重新验证");
+        },
+        "timeout-callback": function () {
+          handleCaptchaFailure("验证码校验超时，请重新验证");
+        },
+        "response-field": false
+      });
+    }
   }
 
-  async function ensureTurnstileScript() {
-    if (window.turnstile && typeof window.turnstile.render === "function") {
-      return;
+  async function ensureCaptchaScript(captchaType) {
+    if (captchaType === "hcaptcha") {
+      if (window.hcaptcha && typeof window.hcaptcha.render === "function") {
+        return;
+      }
+    } else {
+      if (window.turnstile && typeof window.turnstile.render === "function") {
+        return;
+      }
     }
     if (state.captchaScriptPromise) {
       return state.captchaScriptPromise;
@@ -173,12 +203,15 @@
 
     state.captchaScriptPromise = new Promise(function (resolve, reject) {
       const script = document.createElement("script");
-      script.src = turnstileScriptURL;
+      script.src = captchaScriptURLs[captchaType] || captchaScriptURLs.cloudflare;
       script.async = true;
       script.defer = true;
-      script.setAttribute("data-role", "turnstile-api");
+      script.setAttribute("data-role", "captcha-api");
       script.addEventListener("load", function () {
-        if (window.turnstile && typeof window.turnstile.render === "function") {
+        const apiReady = captchaType === "hcaptcha"
+          ? window.hcaptcha && typeof window.hcaptcha.render === "function"
+          : window.turnstile && typeof window.turnstile.render === "function";
+        if (apiReady) {
           resolve();
           return;
         }
@@ -476,11 +509,23 @@
     if (state.captchaWidgetId === null) {
       return;
     }
-    if (!window.turnstile || typeof window.turnstile.reset !== "function") {
-      return;
+    const captcha = state.info && state.info.captcha ? state.info.captcha : {};
+    const captchaType = captcha.type || "cloudflare";
+    if (captchaType === "hcaptcha") {
+      if (!window.hcaptcha || typeof window.hcaptcha.reset !== "function") {
+        return;
+      }
+    } else {
+      if (!window.turnstile || typeof window.turnstile.reset !== "function") {
+        return;
+      }
     }
     try {
-      window.turnstile.reset(state.captchaWidgetId);
+      if (captchaType === "hcaptcha") {
+        window.hcaptcha.reset(state.captchaWidgetId);
+      } else {
+        window.turnstile.reset(state.captchaWidgetId);
+      }
     } catch (error) {
     }
   }

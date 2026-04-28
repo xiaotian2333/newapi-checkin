@@ -21,9 +21,12 @@
 - `CHECKIN_POW_ENABLED`：是否启用签到前的浏览器 PoW，默认 `true`。
 - `CHECKIN_POW_DIFFICULTY`：PoW 难度，单位为前导零 bit，默认 `18`。
 - `CHECKIN_POW_TTL_SECONDS`：PoW 挑战有效期，默认 `300` 秒。
-- `CHECKIN_TURNSTILE_ENABLED`：是否启用签到前的 Turnstile 验证码，默认 `false`。
-- `CHECKIN_TURNSTILE_SITE_KEY`：Turnstile 站点密钥，启用验证码时必填。
-- `CHECKIN_TURNSTILE_SECRET_KEY`：Turnstile 服务端密钥，启用验证码时必填。
+- `CHECKIN_TURNSTILE_ENABLED`：是否启用签到前的验证码，默认 `false`。
+- `CHECKIN_TURNSTILE_TYPE`：验证码服务商类型，可选 `cloudflare` 或 `hcaptcha`，默认 `cloudflare`。
+- `CHECKIN_TURNSTILE_SITE_KEY`：Cloudflare Turnstile 站点密钥。
+- `CHECKIN_TURNSTILE_SECRET_KEY`：Cloudflare Turnstile 服务端密钥。
+- `CHECKIN_CAPTCHA_SITE_KEY`：hCaptcha 站点密钥。
+- `CHECKIN_CAPTCHA_SECRET_KEY`：hCaptcha 服务端密钥。
 
 签到奖励始终按 `0.01 元` 为最小单位发放。按当前额度换算规则，随机结果一定是 `5000` 的倍数；如果配置区间内不存在这样的值，服务会在启动时报错。
 当 `CHECKIN_TURNSTILE_ENABLED=true` 时，必须同时启用 `CHECKIN_POW_ENABLED=true`。
@@ -80,7 +83,7 @@ go build
 
 1. 登录成功后，使用 Linux Do 用户信息中的不可变 `id` 匹配 `users.linux_do_id`。
 2. 若匹配不到用户或匹配到多条用户，直接报错。
-3. 当 `CHECKIN_TURNSTILE_ENABLED=true` 且用户可签到时，用户点击签到后会在按钮下方展开 Turnstile 验证码；验证成功后前端会自动请求 PoW 任务。
+3. 当 `CHECKIN_TURNSTILE_ENABLED=true` 且用户可签到时，用户点击签到后会在按钮下方展开验证码（根据 `CHECKIN_TURNSTILE_TYPE` 加载 Cloudflare Turnstile 或 hCaptcha）；验证成功后前端会自动请求 PoW 任务。
 4. 当 `CHECKIN_POW_ENABLED=true` 且用户可签到时，页面会提前展示 PoW 难度，但只会在用户通过验证码后才获取带时效的 PoW 任务并开始计时。
 5. 当前前端不会跳转到独立内部页面，而是通过 `/api/info` 和前端状态变量切换页面展示。
 6. 当 `quota >= QUOTA_THRESHOLD` 时，不允许签到。

@@ -13,8 +13,9 @@ import (
 )
 
 const (
-	verifyURL      = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
-	maxTokenLength = 2048
+	cloudflareVerifyURL = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
+	hcaptchaVerifyURL   = "https://api.hcaptcha.com/siteverify"
+	maxTokenLength      = 2048
 )
 
 var (
@@ -27,9 +28,10 @@ type httpClient interface {
 }
 
 type Service struct {
-	secretKey string
-	endpoint  string
-	client    httpClient
+	secretKey   string
+	captchaType string
+	endpoint    string
+	client      httpClient
 }
 
 type siteVerifyResponse struct {
@@ -39,10 +41,19 @@ type siteVerifyResponse struct {
 }
 
 func NewService(secretKey string) *Service {
+	return NewServiceWithType(secretKey, "cloudflare")
+}
+
+func NewServiceWithType(secretKey, captchaType string) *Service {
+	endpoint := cloudflareVerifyURL
+	if captchaType == "hcaptcha" {
+		endpoint = hcaptchaVerifyURL
+	}
 	return &Service{
-		secretKey: strings.TrimSpace(secretKey),
-		endpoint:  verifyURL,
-		client:    &http.Client{Timeout: 10 * time.Second},
+		secretKey:   strings.TrimSpace(secretKey),
+		captchaType: captchaType,
+		endpoint:    endpoint,
+		client:      &http.Client{Timeout: 10 * time.Second},
 	}
 }
 
@@ -61,7 +72,7 @@ func (s *Service) Verify(ctx context.Context, token, remoteIP, expectedAction st
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.endpoint, strings.NewReader(form.Encode()))
 	if err != nil {
-		log.Printf("创建 Turnstile 校验请求失败: %v", err)
+		log.Printf("创建验证码校验请求失败: %v", err)
 		return ErrServiceUnavailable
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -69,32 +80,32 @@ func (s *Service) Verify(ctx context.Context, token, remoteIP, expectedAction st
 
 	resp, err := s.client.Do(req)
 	if err != nil {
-		log.Printf("请求 Turnstile 校验接口失败: %v", err)
+		log.Printf("请求验证码校验接口失败: %v", err)
 		return ErrServiceUnavailable
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
-		log.Printf("读取 Turnstile 校验响应失败: %v", err)
+		log.Printf("读取验证码校验响应失败: %v", err)
 		return ErrServiceUnavailable
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		log.Printf("Turnstile 校验接口返回异常状态 %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		log.Printf("验证码校验接口返回异常状态 %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 		return ErrServiceUnavailable
 	}
 
 	var result siteVerifyResponse
 	if err := json.Unmarshal(body, &result); err != nil {
-		log.Printf("解析 Turnstile 校验响应失败: %v", err)
+		log.Printf("解析验证码校验响应失败: %v", err)
 		return ErrServiceUnavailable
 	}
 	if !result.Success {
-		log.Printf("Turnstile 校验失败: error_codes=%v", result.ErrorCodes)
+		log.Printf("验证码校验失败: error_codes=%v", result.ErrorCodes)
 		return ErrInvalidToken
 	}
-	if expectedAction != "" && strings.TrimSpace(result.Action) != expectedAction {
-		log.Printf("Turnstile action 不匹配: got=%q want=%q", result.Action, expectedAction)
+	if s.captchaType == "cloudflare" && expectedAction != "" && strings.TrimSpace(result.Action) != expectedAction {
+		log.Printf("验证码 action 不匹配: got=%q want=%q", result.Action, expectedAction)
 		return ErrInvalidToken
 	}
 	return nil
