@@ -9,4 +9,6 @@
 *_test.go
 
 .env
+.env.*
++.env.example
 newapi-checkin
