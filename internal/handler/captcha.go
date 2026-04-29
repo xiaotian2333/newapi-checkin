@@ -6,17 +6,17 @@ import (
 	"net/http"
 	"strings"
 
-	"newapi-checkin/internal/turnstile"
+	"newapi-checkin/internal/captcha"
 )
 
 const captchaActionCheckin = "checkin"
 
 func (a *App) verifyCaptchaForCheckinTask(ctx context.Context, r *http.Request) error {
-	if !a.config.CheckinTurnstileEnabled {
+	if !a.config.CheckinCaptchaEnabled {
 		return nil
 	}
-	if a.turnstile == nil {
-		return turnstile.ErrServiceUnavailable
+	if a.captchaVerifier == nil {
+		return captcha.ErrServiceUnavailable
 	}
 
 	req, err := decodeCheckinTaskRequest(r)
@@ -24,20 +24,22 @@ func (a *App) verifyCaptchaForCheckinTask(ctx context.Context, r *http.Request) 
 		return err
 	}
 
-	return a.turnstile.Verify(ctx, strings.TrimSpace(req.CaptchaToken), extractClientIP(r), captchaActionCheckin)
+	return a.captchaVerifier.Verify(ctx, strings.TrimSpace(req.CaptchaToken), a.extractClientIP(r), captchaActionCheckin)
 }
 
-func extractClientIP(r *http.Request) string {
-	if value := strings.TrimSpace(r.Header.Get("CF-Connecting-IP")); value != "" {
-		return value
-	}
+func (a *App) extractClientIP(r *http.Request) string {
+	if a.config.TrustProxyHeaders {
+		if value := strings.TrimSpace(r.Header.Get("CF-Connecting-IP")); value != "" {
+			return value
+		}
 
-	if value := strings.TrimSpace(r.Header.Get("X-Forwarded-For")); value != "" {
-		parts := strings.Split(value, ",")
-		if len(parts) > 0 {
-			first := strings.TrimSpace(parts[0])
-			if first != "" {
-				return first
+		if value := strings.TrimSpace(r.Header.Get("X-Forwarded-For")); value != "" {
+			parts := strings.Split(value, ",")
+			if len(parts) > 0 {
+				first := strings.TrimSpace(parts[0])
+				if first != "" {
+					return first
+				}
 			}
 		}
 	}

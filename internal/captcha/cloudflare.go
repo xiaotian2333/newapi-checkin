@@ -1,9 +1,8 @@
-package turnstile
+package captcha
 
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"io"
 	"log"
 	"net/http"
@@ -12,26 +11,11 @@ import (
 	"time"
 )
 
-const (
-	cloudflareVerifyURL = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
-	hcaptchaVerifyURL   = "https://api.hcaptcha.com/siteverify"
-	maxTokenLength      = 2048
-)
-
-var (
-	ErrInvalidToken       = errors.New("验证码校验失败，请重试")
-	ErrServiceUnavailable = errors.New("验证码服务暂时不可用，请稍后重试")
-)
+const cloudflareVerifyURL = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
+const maxTokenLength = 2048
 
 type httpClient interface {
 	Do(req *http.Request) (*http.Response, error)
-}
-
-type Service struct {
-	secretKey   string
-	captchaType string
-	endpoint    string
-	client      httpClient
 }
 
 type siteVerifyResponse struct {
@@ -40,37 +24,36 @@ type siteVerifyResponse struct {
 	ErrorCodes []string `json:"error-codes"`
 }
 
-func NewService(secretKey string) *Service {
-	return NewServiceWithType(secretKey, "cloudflare")
+type cloudflareProvider struct {
+	secretKey string
+	endpoint  string
+	client    httpClient
 }
 
-func NewServiceWithType(secretKey, captchaType string) *Service {
-	endpoint := cloudflareVerifyURL
-	if captchaType == "hcaptcha" {
-		endpoint = hcaptchaVerifyURL
-	}
-	return &Service{
-		secretKey:   strings.TrimSpace(secretKey),
-		captchaType: captchaType,
-		endpoint:    endpoint,
-		client:      &http.Client{Timeout: 10 * time.Second},
-	}
+func init() {
+	Register("cloudflare", func(secretKey string) (Provider, error) {
+		return &cloudflareProvider{
+			secretKey: strings.TrimSpace(secretKey),
+			endpoint:  cloudflareVerifyURL,
+			client:    &http.Client{Timeout: 10 * time.Second},
+		}, nil
+	})
 }
 
-func (s *Service) Verify(ctx context.Context, token, remoteIP, expectedAction string) error {
+func (p *cloudflareProvider) Verify(ctx context.Context, token, remoteIP, expectedAction string) error {
 	token = strings.TrimSpace(token)
 	if token == "" || len(token) > maxTokenLength {
 		return ErrInvalidToken
 	}
 
 	form := url.Values{}
-	form.Set("secret", s.secretKey)
+	form.Set("secret", p.secretKey)
 	form.Set("response", token)
 	if remoteIP = strings.TrimSpace(remoteIP); remoteIP != "" {
 		form.Set("remoteip", remoteIP)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.endpoint, strings.NewReader(form.Encode()))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.endpoint, strings.NewReader(form.Encode()))
 	if err != nil {
 		log.Printf("创建验证码校验请求失败: %v", err)
 		return ErrServiceUnavailable
@@ -78,7 +61,7 @@ func (s *Service) Verify(ctx context.Context, token, remoteIP, expectedAction st
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := s.client.Do(req)
+	resp, err := p.client.Do(req)
 	if err != nil {
 		log.Printf("请求验证码校验接口失败: %v", err)
 		return ErrServiceUnavailable
@@ -104,7 +87,7 @@ func (s *Service) Verify(ctx context.Context, token, remoteIP, expectedAction st
 		log.Printf("验证码校验失败: error_codes=%v", result.ErrorCodes)
 		return ErrInvalidToken
 	}
-	if s.captchaType == "cloudflare" && expectedAction != "" && strings.TrimSpace(result.Action) != expectedAction {
+	if expectedAction != "" && strings.TrimSpace(result.Action) != expectedAction {
 		log.Printf("验证码 action 不匹配: got=%q want=%q", result.Action, expectedAction)
 		return ErrInvalidToken
 	}

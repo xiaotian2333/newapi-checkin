@@ -19,7 +19,7 @@ const (
 	defaultPoWEnabled        = true
 	defaultPoWDifficulty     = 18
 	defaultPoWTTLSeconds     = 300
-	defaultTurnstileEnabled    = false
+	defaultCaptchaEnabled    = false
 	defaultLeaderboardLimit    = 10
 	maxPoWDifficulty           = 256
 )
@@ -45,13 +45,14 @@ type Config struct {
 	CheckinPoWEnabled       bool
 	CheckinPoWDifficulty    int
 	CheckinPoWTTL           time.Duration
-	CheckinTurnstileEnabled  bool
-	CheckinTurnstileType     string
+	CheckinCaptchaEnabled  bool
+	CheckinCaptchaType     string
 	CheckinTurnstileSiteKey  string
 	CheckinTurnstileSecretKey string
 	CheckinCaptchaSiteKey    string
 	CheckinCaptchaSecretKey  string
 	LeaderboardLimit        int
+	TrustProxyHeaders        bool
 }
 
 func Load() (Config, error) {
@@ -83,12 +84,16 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	turnstileEnabled, err := boolOrDefault("CHECKIN_TURNSTILE_ENABLED", defaultTurnstileEnabled)
+	captchaEnabled, err := boolOrDefault("CHECKIN_TURNSTILE_ENABLED", defaultCaptchaEnabled)
 	if err != nil {
 		return Config{}, err
 	}
-	turnstileType := valueOrDefault("CHECKIN_TURNSTILE_TYPE", "cloudflare")
+	captchaType := valueOrDefault("CHECKIN_TURNSTILE_TYPE", "cloudflare")
 	leaderboardLimit, err := intOrDefault("LEADERBOARD_LIMIT", defaultLeaderboardLimit)
+	if err != nil {
+		return Config{}, err
+	}
+	trustProxyHeaders, err := boolOrDefault("TRUST_PROXY_HEADERS", false)
 	if err != nil {
 		return Config{}, err
 	}
@@ -113,13 +118,14 @@ func Load() (Config, error) {
 		CheckinPoWEnabled:       powEnabled,
 		CheckinPoWDifficulty:    powDifficulty,
 		CheckinPoWTTL:           time.Duration(powTTLSeconds) * time.Second,
-		CheckinTurnstileEnabled:  turnstileEnabled,
-		CheckinTurnstileType:     turnstileType,
+		CheckinCaptchaEnabled:  captchaEnabled,
+		CheckinCaptchaType:     captchaType,
 		CheckinTurnstileSiteKey:  strings.TrimSpace(os.Getenv("CHECKIN_TURNSTILE_SITE_KEY")),
 		CheckinTurnstileSecretKey: strings.TrimSpace(os.Getenv("CHECKIN_TURNSTILE_SECRET_KEY")),
 		CheckinCaptchaSiteKey:    strings.TrimSpace(os.Getenv("CHECKIN_CAPTCHA_SITE_KEY")),
 		CheckinCaptchaSecretKey:   strings.TrimSpace(os.Getenv("CHECKIN_CAPTCHA_SECRET_KEY")),
 		LeaderboardLimit:        leaderboardLimit,
+		TrustProxyHeaders:       trustProxyHeaders,
 	}
 
 	if cfg.DatabaseURL == "" {
@@ -149,14 +155,14 @@ func Load() (Config, error) {
 	if cfg.LeaderboardLimit <= 0 {
 		return Config{}, errors.New("LEADERBOARD_LIMIT 必须大于 0")
 	}
-	if cfg.CheckinTurnstileEnabled {
+	if cfg.CheckinCaptchaEnabled {
 		if !cfg.CheckinPoWEnabled {
 			return Config{}, errors.New("启用 CHECKIN_TURNSTILE_ENABLED 时必须同时启用 CHECKIN_POW_ENABLED")
 		}
-		if cfg.CheckinTurnstileType != "cloudflare" && cfg.CheckinTurnstileType != "hcaptcha" {
+		if cfg.CheckinCaptchaType != "cloudflare" && cfg.CheckinCaptchaType != "hcaptcha" {
 			return Config{}, errors.New("CHECKIN_TURNSTILE_TYPE 必须是 cloudflare 或 hcaptcha")
 		}
-		if cfg.CheckinTurnstileType == "cloudflare" {
+		if cfg.CheckinCaptchaType == "cloudflare" {
 			if cfg.CheckinTurnstileSiteKey == "" {
 				return Config{}, errors.New("缺少环境变量 CHECKIN_TURNSTILE_SITE_KEY")
 			}

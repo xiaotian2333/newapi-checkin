@@ -19,19 +19,20 @@ import (
 	"newapi-checkin/internal/config"
 	"newapi-checkin/internal/reward"
 	"newapi-checkin/internal/store"
-	"newapi-checkin/internal/turnstile"
+	"newapi-checkin/internal/captcha"
 )
 
 const flashCookieName = "linuxdo_checkin_flash"
 
 var ErrInvalidCheckinRequest = errors.New("签到请求格式非法")
 var ErrInvalidCheckinTaskRequest = errors.New("验证码请求格式非法")
+var ErrTooManyRequests = errors.New("请求过于频繁，请稍后再试")
 
 type Options struct {
 	Config      config.Config
 	Store       userStore
 	Auth        authService
-	Turnstile   captchaVerifier
+	CaptchaVerifier   captchaVerifier
 	Leaderboard *LeaderboardCache
 }
 
@@ -39,10 +40,11 @@ type App struct {
 	config       config.Config
 	store        userStore
 	auth         authService
-	turnstile    captchaVerifier
+	captchaVerifier    captchaVerifier
 	leaderboard  *LeaderboardCache
 	assetHandler http.Handler
 	indexHTML    []byte
+	checkinTaskLimiter *rateLimiter
 }
 
 type AppState struct {
@@ -95,12 +97,16 @@ func New(opts Options) (*App, error) {
 	if opts.Auth == nil {
 		opts.Auth = auth.NewService(opts.Config)
 	}
-	if opts.Turnstile == nil && opts.Config.CheckinTurnstileEnabled {
+	if opts.CaptchaVerifier == nil && opts.Config.CheckinCaptchaEnabled {
 		secretKey := opts.Config.CheckinCaptchaSecretKey
-		if opts.Config.CheckinTurnstileType == "cloudflare" {
+		if opts.Config.CheckinCaptchaType == "cloudflare" {
 			secretKey = opts.Config.CheckinTurnstileSecretKey
 		}
-		opts.Turnstile = turnstile.NewServiceWithType(secretKey, opts.Config.CheckinTurnstileType)
+		svc, err := captcha.NewService(opts.Config.CheckinCaptchaType, secretKey)
+		if err != nil {
+			return nil, err
+		}
+		opts.CaptchaVerifier = svc
 	}
 	if opts.Leaderboard == nil {
 		opts.Leaderboard = NewLeaderboardCache(opts.Store, time.Now, opts.Config.LeaderboardLimit)
@@ -119,10 +125,11 @@ func New(opts Options) (*App, error) {
 		config:       opts.Config,
 		store:        opts.Store,
 		auth:         opts.Auth,
-		turnstile:    opts.Turnstile,
+		captchaVerifier:    opts.CaptchaVerifier,
 		leaderboard:  opts.Leaderboard,
 		assetHandler: assetHandler,
 		indexHTML:    indexHTML,
+		checkinTaskLimiter: newRateLimiter(),
 	}, nil
 }
 
@@ -278,6 +285,14 @@ func (a *App) handleCheckinTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if a.checkinTaskLimiter != nil && !a.checkinTaskLimiter.allow(session.LinuxDoID, time.Minute) {
+		writeJSON(w, http.StatusTooManyRequests, AppState{
+			QuotaThreshold: a.config.QuotaThreshold,
+			Error:          ErrTooManyRequests.Error(),
+		})
+		return
+	}
+
 	state, err := a.loadAppState(r.Context(), session, nil)
 	if err != nil {
 		a.writeStateError(w, r.Context(), session, err, nil)
@@ -368,14 +383,14 @@ func (a *App) loadAppState(ctx context.Context, session auth.SessionClaims, last
 				Difficulty: a.config.CheckinPoWDifficulty,
 			}
 		}
-		if a.config.CheckinTurnstileEnabled {
+		if a.config.CheckinCaptchaEnabled {
 			siteKey := a.config.CheckinTurnstileSiteKey
-			if a.config.CheckinTurnstileType == "hcaptcha" {
+			if a.config.CheckinCaptchaType == "hcaptcha" {
 				siteKey = a.config.CheckinCaptchaSiteKey
 			}
 			state.Captcha = &CaptchaClientState{
 				Enabled: true,
-				Type:    a.config.CheckinTurnstileType,
+				Type:    a.config.CheckinCaptchaType,
 				SiteKey: siteKey,
 			}
 		}
@@ -566,11 +581,11 @@ func statusForError(err error) int {
 		return http.StatusNotFound
 	case errors.Is(err, store.ErrDuplicateUsers):
 		return http.StatusConflict
-	case errors.Is(err, turnstile.ErrServiceUnavailable):
+	case errors.Is(err, captcha.ErrServiceUnavailable):
 		return http.StatusBadGateway
 	case errors.Is(err, store.ErrAlreadyCheckedIn), errors.Is(err, store.ErrQuotaNotEligible), errors.Is(err, ErrInvalidPoW):
 		return http.StatusBadRequest
-	case errors.Is(err, ErrInvalidCheckinRequest), errors.Is(err, ErrInvalidCheckinTaskRequest), errors.Is(err, turnstile.ErrInvalidToken):
+	case errors.Is(err, ErrInvalidCheckinRequest), errors.Is(err, ErrInvalidCheckinTaskRequest), errors.Is(err, captcha.ErrInvalidToken):
 		return http.StatusBadRequest
 	case errors.Is(err, auth.ErrMissingSession), errors.Is(err, auth.ErrExpiredSession), errors.Is(err, auth.ErrInvalidSession):
 		return http.StatusUnauthorized
