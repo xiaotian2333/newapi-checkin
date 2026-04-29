@@ -200,16 +200,25 @@
             })
           })
           taskPayload = await taskResponse.json()
-        } finally {
+        } catch (_) {
+          // 网络错误时重置验证码，让用户重新验证
           if (captcha.enabled) {
             window.CheckinCaptcha.reset()
+            state.captchaStatus = "请重新完成验证码后再试"
           }
+          state.busy = false
+          render()
+          return
         }
 
         if (!taskResponse.ok) {
+          // 服务端拒绝验证码 token 时重置验证码
+          if (captcha.enabled) {
+            window.CheckinCaptcha.reset()
+            state.captchaStatus = "请重新完成验证码后再试"
+          }
           applyInfo(taskPayload)
           state.powStatus = ""
-          state.captchaStatus = captcha.enabled ? "请重新完成验证码后再试" : ""
           return
         }
         if (!taskPayload.enabled) {
