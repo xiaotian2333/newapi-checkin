@@ -24,7 +24,7 @@ func Run() {
 		log.Fatalf("加载配置失败: %v", err)
 	}
 
-	dbStore, err := store.New(context.Background(), cfg.DatabaseURL)
+	dbStore, err := store.New(context.Background(), cfg.DatabaseURL, cfg.LogBaseURL)
 	if err != nil {
 		log.Fatalf("连接数据库失败: %v", err)
 	}

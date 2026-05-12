@@ -20,7 +20,8 @@ var (
 )
 
 type Store struct {
-	db *sql.DB
+	db    *sql.DB
+	logDB *sql.DB // nil 表示 logs 表使用主库
 }
 
 type User struct {
@@ -52,26 +53,35 @@ type CheckinLeaderboardItem struct {
 }
 
 func (s *Store) ValidateSchema(ctx context.Context) error {
-	required := map[string][]string{
+	mainTables := map[string][]string{
 		"users":    {"id", "linux_do_id", "quota", "username"},
 		"checkins": {"user_id", "checkin_date", "quota_awarded", "created_at"},
-		"logs": {
-			"user_id", "created_at", "type", "content", "username",
-			"token_name", "model_name", "quota", "prompt_tokens", "completion_tokens",
-			"use_time", "is_stream", "channel_id", "channel_name", "token_id",
-			"group", "ip", "other", "request_id",
-		},
 	}
-
-	for table, columns := range required {
-		if err := s.validateTableColumns(ctx, table, columns); err != nil {
+	for table, columns := range mainTables {
+		if err := s.validateTableColumns(ctx, s.db, table, columns); err != nil {
 			return err
 		}
 	}
+
+	// logs 表使用独立日志库（若配置），否则使用主库
+	logDB := s.logDB
+	if logDB == nil {
+		logDB = s.db
+	}
+	logColumns := []string{
+		"user_id", "created_at", "type", "content", "username",
+		"token_name", "model_name", "quota", "prompt_tokens", "completion_tokens",
+		"use_time", "is_stream", "channel_id", "channel_name", "token_id",
+		"group", "ip", "other", "request_id",
+	}
+	if err := s.validateTableColumns(ctx, logDB, "logs", logColumns); err != nil {
+		return err
+	}
+
 	return nil
 }
 
-func New(ctx context.Context, databaseURL string) (*Store, error) {
+func New(ctx context.Context, databaseURL, logBaseURL string) (*Store, error) {
 	db, err := sql.Open("pgx", databaseURL)
 	if err != nil {
 		return nil, err
@@ -84,11 +94,33 @@ func New(ctx context.Context, databaseURL string) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
-	return &Store{db: db}, nil
+
+	s := &Store{db: db}
+
+	// 当 LogBaseURL 配置时，打开独立的日志库连接
+	if logBaseURL != "" {
+		logDB, err := sql.Open("pgx", logBaseURL)
+		if err != nil {
+			db.Close()
+			return nil, err
+		}
+		logDB.SetMaxOpenConns(5)
+		logDB.SetMaxIdleConns(2)
+		logDB.SetConnMaxLifetime(30 * time.Minute)
+
+		if err := logDB.PingContext(ctx); err != nil {
+			logDB.Close()
+			db.Close()
+			return nil, fmt.Errorf("连接日志库失败: %w", err)
+		}
+		s.logDB = logDB
+	}
+
+	return s, nil
 }
 
-func (s *Store) validateTableColumns(ctx context.Context, table string, required []string) error {
-	rows, err := s.db.QueryContext(ctx, `
+func (s *Store) validateTableColumns(ctx context.Context, db *sql.DB, table string, required []string) error {
+	rows, err := db.QueryContext(ctx, `
 		SELECT column_name
 		FROM information_schema.columns
 		WHERE table_schema = current_schema() AND table_name = $1
@@ -122,6 +154,9 @@ func (s *Store) validateTableColumns(ctx context.Context, table string, required
 }
 
 func (s *Store) Close() error {
+	if s.logDB != nil {
+		_ = s.logDB.Close()
+	}
 	return s.db.Close()
 }
 
@@ -232,7 +267,7 @@ func (s *Store) Checkin(ctx context.Context, linuxDoID, username string, thresho
 		return CheckinResult{}, fmt.Errorf("更新用户额度失败: %w", err)
 	}
 
-	if err := insertCheckinLog(ctx, tx, userID, username, quotaAwarded, createdAt); err != nil {
+	if err := s.insertCheckinLog(ctx, tx, userID, username, quotaAwarded, createdAt); err != nil {
 		return CheckinResult{}, err
 	}
 
@@ -282,9 +317,38 @@ func (s *Store) GetDailyLeaderboard(ctx context.Context, checkinDate string, lim
 	return items, nil
 }
 
-func insertCheckinLog(ctx context.Context, tx *sql.Tx, userID int64, username string, increment, createdAt int64) error {
+func (s *Store) insertCheckinLog(ctx context.Context, tx *sql.Tx, userID int64, username string, increment, createdAt int64) error {
 	content := buildCheckinLogContent(increment)
-	if _, err := tx.ExecContext(ctx, `
+
+	// 独立日志库：直接写入，不参与主库事务
+	if s.logDB != nil {
+		_, err := s.logDB.ExecContext(ctx, `
+			INSERT INTO logs (
+				user_id, created_at, type, content, username,
+				token_name, model_name, quota, prompt_tokens, completion_tokens,
+				use_time, is_stream, channel_id, channel_name, token_id,
+				"group", ip, other, request_id
+			)
+			VALUES (
+				$1, $2, $3, $4, $5,
+				$6, $7, $8, $9, $10,
+				$11, $12, $13, $14, $15,
+				$16, $17, $18, $19
+			)
+		`,
+			userID, createdAt, 4, content, username,
+			"", "", int64(0), int64(0), int64(0),
+			int64(0), false, int64(0), "", int64(0),
+			"", "", "", "",
+		)
+		if err != nil {
+			return fmt.Errorf("写入签到日志失败: %w", err)
+		}
+		return nil
+	}
+
+	// 未配置独立日志库：使用主库事务
+	_, err := tx.ExecContext(ctx, `
 		INSERT INTO logs (
 			user_id, created_at, type, content, username,
 			token_name, model_name, quota, prompt_tokens, completion_tokens,
@@ -302,7 +366,8 @@ func insertCheckinLog(ctx context.Context, tx *sql.Tx, userID int64, username st
 		"", "", int64(0), int64(0), int64(0),
 		int64(0), false, int64(0), "", int64(0),
 		"", "", "", "",
-	); err != nil {
+	)
+	if err != nil {
 		return fmt.Errorf("写入签到日志失败: %w", err)
 	}
 	return nil

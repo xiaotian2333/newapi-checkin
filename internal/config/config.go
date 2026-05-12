@@ -26,6 +26,7 @@ const (
 
 type Config struct {
 	DatabaseURL               string
+	LogBaseURL                string
 	ListenAddr                string
 	QuotaThreshold            int64
 	QuotaIncrementMin         int64
@@ -100,6 +101,7 @@ func Load() (Config, error) {
 
 	cfg := Config{
 		DatabaseURL:               strings.TrimSpace(os.Getenv("DATABASE_URL")),
+		LogBaseURL:                strings.TrimSpace(os.Getenv("LOGBASE_URL")),
 		ListenAddr:                valueOrDefault("LISTEN_ADDR", defaultListenAddr),
 		QuotaThreshold:            quotaThreshold,
 		QuotaIncrementMin:         quotaIncrementMin,
