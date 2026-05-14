@@ -13,6 +13,8 @@ import (
 	"newapi-checkin/internal/auth"
 	"newapi-checkin/internal/config"
 	"newapi-checkin/internal/handler"
+	_ "newapi-checkin/internal/store/driver/postgres" // 注册 PostgreSQL 驱动
+	_ "newapi-checkin/internal/store/driver/mysql"    // 注册 MySQL 驱动
 	"newapi-checkin/internal/store"
 )
 

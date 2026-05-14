@@ -343,9 +343,10 @@ func (a *App) recoverMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if rec := recover(); rec != nil {
+				log.Printf("捕获 panic: %v", rec)
 				writeJSON(w, http.StatusInternalServerError, AppState{
 					QuotaThreshold: a.config.QuotaThreshold,
-					Error:          fmt.Sprintf("服务内部错误: %v", rec),
+					Error:          "服务内部错误",
 				})
 			}
 		}()
@@ -405,6 +406,7 @@ func (a *App) writeStateError(w http.ResponseWriter, ctx context.Context, sessio
 	status := statusForError(err)
 	state, loadErr := a.loadAppState(ctx, session, lastCheckin)
 	if loadErr != nil {
+		log.Printf("加载应用状态失败: %v (原始错误: %v)", loadErr, err)
 		leaderboardDate, leaderboard := a.snapshotLeaderboard()
 		writeJSON(w, statusForError(loadErr), AppState{
 			LoggedIn:        true,
@@ -413,12 +415,18 @@ func (a *App) writeStateError(w http.ResponseWriter, ctx context.Context, sessio
 			QuotaThreshold:  a.config.QuotaThreshold,
 			LeaderboardDate: leaderboardDate,
 			Leaderboard:     leaderboard,
-			Error:           loadErr.Error(),
+			Error:           "服务内部错误",
 		})
 		return
 	}
 
-	state.Error = err.Error()
+	// 未知错误（500）记录日志但不暴露细节
+	if status == http.StatusInternalServerError {
+		log.Printf("未知错误: %v", err)
+		state.Error = "服务内部错误"
+	} else {
+		state.Error = err.Error()
+	}
 	state.Message = ""
 	if errors.Is(err, store.ErrAlreadyCheckedIn) || errors.Is(err, store.ErrQuotaNotEligible) {
 		state.CanCheckin = false

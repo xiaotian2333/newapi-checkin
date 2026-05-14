@@ -6,13 +6,13 @@ import (
 	"time"
 
 	"newapi-checkin/internal/auth"
-	"newapi-checkin/internal/store"
+	"newapi-checkin/internal/store/driver"
 )
 
 type userStore interface {
-	GetUserByLinuxDoID(ctx context.Context, linuxDoID string) (store.User, error)
-	Checkin(ctx context.Context, linuxDoID, username string, threshold, quotaAwarded int64, now time.Time) (store.CheckinResult, error)
-	GetDailyLeaderboard(ctx context.Context, checkinDate string, limit int) ([]store.CheckinLeaderboardItem, error)
+	GetUserByLinuxDoID(ctx context.Context, linuxDoID string) (driver.User, error)
+	Checkin(ctx context.Context, linuxDoID, username string, threshold, quotaAwarded int64, now time.Time) (driver.CheckinResult, error)
+	GetDailyLeaderboard(ctx context.Context, checkinDate string, limit int) ([]driver.CheckinLeaderboardItem, error)
 }
 
 type authService interface {
